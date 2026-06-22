@@ -1,0 +1,36 @@
+# Arquivos compilados do Java
+*.class
+*.jar
+*.war
+*.ear
+
+# Pastas de compilação
+bin/
+build/
+out/
+target/
+.gradle/
+
+# IDEs e editores
+.idea/
+.vscode/
+*.iml
+.classpath
+.project
+.settings/
+
+# Logs e arquivos temporários
+*.log
+*.tmp
+hs_err_pid*
+replay_pid*
+
+# Configurações locais e segredos
+.env
+.env.*
+!.env.example
+
+# Sistema operacional
+.DS_Store
+Thumbs.db
+desktop.ini
