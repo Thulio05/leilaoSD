@@ -1,0 +1,12 @@
+[Lamport=0     | 12:33:42] SERVIDOR_INICIADO papel=PRIMARIO
+[Lamport=0     | 12:33:57] USUARIO_CADASTRADO usuario=guimagal
+[Lamport=0     | 12:34:42] LEILAO_ENCERRADO leilao=1 vencedor=nenhum
+[Lamport=0     | 12:34:42] LEILAO_ENCERRADO leilao=2 vencedor=nenhum
+[Lamport=0     | 12:34:42] LEILAO_ENCERRADO leilao=3 vencedor=nenhum
+[Lamport=0     | 14:20:20] SERVIDOR_INICIADO papel=PRIMARIO
+[Lamport=0     | 14:20:42] USUARIO_CADASTRADO usuario=gui
+[Lamport=1     | 14:21:03] REPLICACAO_ESTADO leilao=3 sucesso=true
+[Lamport=1     | 14:21:03] LANCE_ACEITO leilao=3 usuario=gui valor=900.0
+[Lamport=1     | 14:21:21] LEILAO_ENCERRADO leilao=1 vencedor=nenhum
+[Lamport=1     | 14:21:21] LEILAO_ENCERRADO leilao=2 vencedor=nenhum
+[Lamport=1     | 14:21:51] LEILAO_ENCERRADO leilao=3 vencedor=gui valor=900.0

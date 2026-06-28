@@ -24,6 +24,11 @@ public class ServidorLeilao {
     private Socket socketReplicacao;
     private ObjectOutputStream saidaReplicacao;
 
+    // [PAINEL] Instância do painel web. Criada aqui para que o servidor
+    // primário controle seu ciclo de vida (inicio junto com o TCP).
+    private final PainelMonitoramento painel =
+            new PainelMonitoramento(gerenciadorLeiloes, "SERVIDOR PRIMÁRIO");
+
     public void iniciar() {
         try {
             servidorClientes = new ServerSocket(PORTA_CLIENTES);
@@ -37,6 +42,13 @@ public class ServidorLeilao {
             logDistribuido.registrar(gerenciadorLeiloes.obterLamportAtual(),
                     "SERVIDOR_INICIADO papel=PRIMARIO");
             enviarEstadoParaReplica(gerenciadorLeiloes.criarEstadoReplicado());
+
+            // [PAINEL] Sobe o painel web numa thread daemon independente.
+            // Não interfere no TCP: é só mais uma thread lendo o mesmo
+            // GerenciadorLeiloes que já é thread-safe por design.
+            Thread threadPainel = new Thread(painel::iniciar, "Thread-Painel-Web");
+            threadPainel.setDaemon(true);
+            threadPainel.start();
 
             Thread threadHeartbeat = new Thread(this::executarHeartbeat, "Thread-Heartbeat");
             threadHeartbeat.start();
