@@ -29,9 +29,6 @@ public class ServidorReplica {
     private ServerSocket servidorReplicacao;
     private Socket socketPrimarioAtual;
 
-    // [PAINEL] O painel começa identificado como "SECUNDÁRIO". Quando o
-    // failover ocorrer, chamamos painel.atualizarPapel() para mudar o
-    // texto exibido na página — sem reiniciar o servidor HTTP.
     private final PainelMonitoramento painel =
             new PainelMonitoramento(gerenciadorLeiloes, "SERVIDOR SECUNDÁRIO");
 
@@ -46,10 +43,6 @@ public class ServidorReplica {
         threadEscuta.start();
         threadMonitor.start();
 
-        // [PAINEL] O painel sobe junto com a réplica, já na porta 8080.
-        // Enquanto o primário estiver vivo, a página mostra "SECUNDÁRIO"
-        // e os dados replicados que chegam via snapshot. No momento do
-        // failover, painel.atualizarPapel() muda o texto em tempo real.
         Thread threadPainel = new Thread(painel::iniciar, "Thread-Painel-Web");
         threadPainel.setDaemon(true);
         threadPainel.start();
@@ -130,7 +123,6 @@ public class ServidorReplica {
         try {
             gerenciadorLeiloes.sincronizarLamport(Long.parseLong(lamportRecebido));
         } catch (NumberFormatException ignorado) {
-            // Um heartbeat malformado não interrompe a replicação.
         }
     }
 
@@ -139,7 +131,6 @@ public class ServidorReplica {
             try {
                 Thread.sleep(INTERVALO_VERIFICACAO_MS);
 
-                // A réplica só pode declarar falha depois de conhecer o primário.
                 if (!primarioJaConectou) {
                     continue;
                 }
@@ -156,7 +147,6 @@ public class ServidorReplica {
         }
     }
 
-    /** Failover determinístico para o único servidor sobrevivente. */
     private synchronized void promoverParaPrimario() {
         if (assumiuControle) {
             return;
@@ -171,16 +161,8 @@ public class ServidorReplica {
         logDistribuido.registrar(gerenciadorLeiloes.obterLamportAtual(),
                 "FAILOVER replica_assumiu_controle");
 
-        // [PAINEL] Atualiza o rótulo exibido na página imediatamente.
-        // A próxima vez que o navegador recarregar (em até 2s) já vai
-        // mostrar a cor vermelha e o texto "SECUNDÁRIO → PRIMÁRIO",
-        // tornando o failover visível na tela para qualquer pessoa
-        // acompanhando pelo navegador durante a apresentação.
         painel.atualizarPapel("SERVIDOR SECUNDÁRIO → ASSUMIU COMO PRIMÁRIO ⚡");
 
-        // Relê o arquivo compartilhado de usuários: o primário pode ter
-        // cadastrado gente nova depois que esta réplica subiu, e aqui é o
-        // momento em que esses dados passam a importar de verdade.
         repositorioUsuarios.recarregarDoArquivo();
 
         Thread threadClientes =
@@ -200,7 +182,6 @@ public class ServidorReplica {
                 servidorReplicacao.close();
             }
         } catch (IOException ignorado) {
-            // Os sockets já estavam encerrados.
         }
     }
 

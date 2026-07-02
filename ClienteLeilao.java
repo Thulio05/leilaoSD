@@ -9,7 +9,6 @@ import java.util.Scanner;
 /** Cliente de terminal com leitura assíncrona e reconexão automática. */
 public class ClienteLeilao {
 
-    // Mantidos como estavam para permitir futura troca por dois IPs diferentes.
     private static final String[] SERVIDORES_CANDIDATOS = {"localhost", "localhost"};
     private static final int PORTA_CLIENTES = 5555;
     private static final int TIMEOUT_CONEXAO_MS = 3_000;
@@ -73,8 +72,6 @@ public class ClienteLeilao {
             while (!encerrando && scanner.hasNextLine()) {
                 String textoDigitado = scanner.nextLine();
 
-                // As duas primeiras linhas da sessão são nome e senha,
-                // exigidas pelo servidor antes de liberar qualquer comando.
                 if (nomeUsuario == null) {
                     nomeUsuario = textoDigitado;
                     if (!enviarTexto(textoDigitado)) {
@@ -145,10 +142,6 @@ public class ClienteLeilao {
         return !saida.checkError();
     }
 
-    /**
-     * Aguarda 8 segundos, tenta os candidatos e continua tentando até
-     * que algum servidor esteja disponível ou o usuário encerre o cliente.
-     */
     private synchronized void tratarQuedaDeConexao() {
         if (reconectando || encerrando) {
             return;
@@ -183,7 +176,6 @@ public class ClienteLeilao {
                 socket.close();
             }
         } catch (IOException ignorado) {
-            // O socket já estava encerrado.
         }
     }
 

@@ -18,9 +18,6 @@ public class TratadorCliente implements Runnable {
     private PrintWriter saida;
     private boolean encerramentoSolicitado;
 
-    /**
-     * servidorPrimario é null quando este tratador pertence à réplica promovida.
-     */
     public TratadorCliente(
             Socket socket,
             GerenciadorLeiloes gerenciadorLeiloes,
@@ -64,14 +61,6 @@ public class TratadorCliente implements Runnable {
         }
     }
 
-    /**
-     * Pede nome e senha ao cliente. Se o nome ainda não existe, cadastra
-     * na hora — assim o cliente de terminal continua simples, sem precisar
-     * de um comando separado de "cadastrar" antes de "login".
-     *
-     * Retorna false se a conexão cair durante o login, para o chamador
-     * saber que deve interromper o atendimento.
-     */
     private boolean autenticar() throws IOException {
         enviarMensagem("Digite seu nome de usuário:");
         String nomeDigitado = entrada.readLine();
@@ -103,8 +92,6 @@ public class TratadorCliente implements Runnable {
                         + "usuario=" + nomeCliente);
         enviarMensagem("✓ " + resultado.mensagem);
 
-        // O mesmo resumo é enviado na conexão inicial e na reconexão.
-        // Assim o cliente não precisa descobrir sozinho o que ocorreu enquanto esteve fora.
         enviarMensagem("[SINCRONIZAÇÃO] Estado atual recebido do servidor:");
         enviarMensagem(gerenciadorLeiloes.criarResumoAtualParaCliente());
         return true;
@@ -184,7 +171,6 @@ public class TratadorCliente implements Runnable {
                 return;
             }
 
-            // A tentativa de replicação acontece antes da confirmação ao cliente.
             if (servidorPrimario != null) {
                 servidorPrimario.replicarAposLanceAceito(idLeilao, resultado.lance);
             }
@@ -200,8 +186,6 @@ public class TratadorCliente implements Runnable {
                 enviarMensagem("⏱ Lance nos últimos 30s: cronômetro estendido em mais 30s.");
             }
 
-            // O broadcast torna a atualização visível para todos sem que
-            // cada cliente precise executar o comando "status" repetidamente.
             String atualizacao = "[ATUALIZAÇÃO GLOBAL] Leilão #" + idLeilao
                     + ": " + resultado.lance;
             registroClientes.enviarParaTodos(atualizacao);
@@ -235,10 +219,6 @@ public class TratadorCliente implements Runnable {
         enviarMensagem("=============================\n");
     }
 
-    /**
-     * Respostas de comandos e broadcasts podem partir de threads diferentes.
-     * O synchronized impede que duas mensagens sejam escritas juntas no socket.
-     */
     public synchronized boolean enviarMensagem(String mensagem) {
         if (saida == null || socket.isClosed()) {
             return false;

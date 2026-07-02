@@ -24,8 +24,6 @@ public class ServidorLeilao {
     private Socket socketReplicacao;
     private ObjectOutputStream saidaReplicacao;
 
-    // [PAINEL] Instância do painel web. Criada aqui para que o servidor
-    // primário controle seu ciclo de vida (inicio junto com o TCP).
     private final PainelMonitoramento painel =
             new PainelMonitoramento(gerenciadorLeiloes, "SERVIDOR PRIMÁRIO");
 
@@ -43,9 +41,6 @@ public class ServidorLeilao {
                     "SERVIDOR_INICIADO papel=PRIMARIO");
             enviarEstadoParaReplica(gerenciadorLeiloes.criarEstadoReplicado());
 
-            // [PAINEL] Sobe o painel web numa thread daemon independente.
-            // Não interfere no TCP: é só mais uma thread lendo o mesmo
-            // GerenciadorLeiloes que já é thread-safe por design.
             Thread threadPainel = new Thread(painel::iniciar, "Thread-Painel-Web");
             threadPainel.setDaemon(true);
             threadPainel.start();
@@ -90,7 +85,6 @@ public class ServidorLeilao {
         }
     }
 
-    /** Chamado pelo tratador após um lance aceito. */
     public void replicarAposLanceAceito(int idLeilao, Lance lance) {
         System.out.println("[REPLICAÇÃO] Lance no leilão #" + idLeilao
                 + " (Lamport=" + lance.obterTimestampLamport() + "). Enviando estado...");
@@ -101,7 +95,6 @@ public class ServidorLeilao {
                         + " sucesso=" + replicado);
     }
 
-    /** Serializa as escritas para que heartbeat e estado não se misturem. */
     private synchronized boolean enviarEstadoParaReplica(
             GerenciadorLeiloes.EstadoReplicado estado) {
 
@@ -156,7 +149,6 @@ public class ServidorLeilao {
         }
     }
 
-    /** Abre ou reabre a conexão usada pela replicação. */
     private synchronized boolean tentarConectarReplica() {
         if (saidaReplicacao != null) {
             return true;
@@ -182,7 +174,6 @@ public class ServidorLeilao {
                 socketReplicacao.close();
             }
         } catch (IOException ignorado) {
-            // A conexão já estava encerrada.
         }
         socketReplicacao = null;
         saidaReplicacao = null;

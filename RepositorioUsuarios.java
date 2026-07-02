@@ -7,15 +7,7 @@ import java.security.NoSuchAlgorithmException;
 import java.util.HashMap;
 import java.util.Map;
 
-/**
- * Cadastro e autenticação simples de usuários, persistidos em um
- * arquivo de texto (um usuário por linha: nome|hashDaSenha).
- *
- * Não usa banco de dados nem bibliotecas externas, seguindo a mesma
- * restrição já aplicada ao resto do projeto. A senha nunca é guardada
- * em texto puro: é transformada em hash SHA-256 antes de salvar ou
- * comparar, usando apenas java.security, que já vem na JDK.
- */
+/** Cadastro e autenticação simples de usuários em arquivo texto. */
 public class RepositorioUsuarios {
 
     private static final String SEPARADOR = "\\|";
@@ -44,21 +36,11 @@ public class RepositorioUsuarios {
         }
     }
 
-    /**
-     * Relê o arquivo do zero. Útil quando outro processo (o primário, no
-     * mesmo diretório) pode ter cadastrado usuários novos enquanto esta
-     * réplica estava de pé apenas escutando heartbeat.
-     */
     public synchronized void recarregarDoArquivo() {
         usuarios.clear();
         carregarDoArquivo();
     }
 
-    /**
-     * Resultado estruturado de uma tentativa de login, no mesmo padrão
-     * usado por Leilao.ResultadoLance: evita strings soltas e deixa
-     * explícito o que aconteceu.
-     */
     public static class ResultadoAutenticacao {
         public final boolean sucesso;
         public final String mensagem;
@@ -83,16 +65,6 @@ public class RepositorioUsuarios {
         }
     }
 
-    /**
-     * Autentica um usuário já cadastrado ou cria o cadastro na primeira vez
-     * que o nome aparece, para manter o cliente de terminal simples (sem um
-     * comando separado de "cadastrar"). Se o nome já existe, a senha
-     * precisa ser igual à cadastrada antes.
-     *
-     * synchronized porque vários TratadorCliente podem chamar este método
-     * ao mesmo tempo, e a leitura+escrita do mapa e do arquivo precisa ser
-     * atômica para não perder cadastros concorrentes.
-     */
     public synchronized ResultadoAutenticacao autenticarOuCadastrar(String nome, String senha) {
         if (nome == null || nome.trim().isEmpty()) {
             return ResultadoAutenticacao.falha("Nome de usuário não pode ser vazio.");
@@ -141,7 +113,6 @@ public class RepositorioUsuarios {
             }
             return hexadecimal.toString();
         } catch (NoSuchAlgorithmException erro) {
-            // SHA-256 sempre está disponível na JDK; isto não deveria ocorrer.
             throw new IllegalStateException("Algoritmo de hash indisponível.", erro);
         }
     }
