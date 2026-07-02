@@ -1,3 +1,10 @@
+package leilao.servidor;
+
+import leilao.dominio.GerenciadorLeiloes;
+import leilao.dominio.Leilao;
+import leilao.persistencia.LogDistribuido;
+import leilao.persistencia.RepositorioUsuarios;
+
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.net.ServerSocket;

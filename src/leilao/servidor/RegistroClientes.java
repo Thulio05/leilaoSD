@@ -1,3 +1,5 @@
+package leilao.servidor;
+
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
