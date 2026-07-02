@@ -95,6 +95,16 @@ public class ServidorLeilao {
                         + " sucesso=" + replicado);
     }
 
+    public void replicarAposLeilaoCriado(Leilao leilao, long timestampLamport) {
+        System.out.println("[REPLICAÇÃO] Leilão #" + leilao.obterId()
+                + " criado (Lamport=" + timestampLamport + "). Enviando estado...");
+
+        boolean replicado = enviarEstadoParaReplica(gerenciadorLeiloes.criarEstadoReplicado());
+        logDistribuido.registrar(timestampLamport,
+                "REPLICACAO_ESTADO leilao=" + leilao.obterId()
+                        + " tipo=criacao sucesso=" + replicado);
+    }
+
     private synchronized boolean enviarEstadoParaReplica(
             GerenciadorLeiloes.EstadoReplicado estado) {
 

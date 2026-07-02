@@ -8,8 +8,8 @@ import java.util.List;
  */
 public class Leilao implements Serializable {
 
-    private static final long serialVersionUID = 1L;
-    private static final long DURACAO_PADRAO_MS = 60_000;
+    private static final long serialVersionUID = 1L;    
+    private static final long DURACAO_PADRAO_MS = 5*60_000;
     private static final long JANELA_ANTI_SNIPING_MS = 30_000;
     private static final long EXTENSAO_ANTI_SNIPING_MS = 30_000;
 

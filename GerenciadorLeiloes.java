@@ -20,6 +20,26 @@ public class GerenciadorLeiloes {
         return leilao;
     }
 
+    public synchronized ResultadoCriacaoLeilao criarLeilaoDinamico(
+            String descricaoItem, double precoInicial) {
+
+        if (descricaoItem == null || descricaoItem.trim().isEmpty()) {
+            return ResultadoCriacaoLeilao.recusado("A descrição do item não pode ser vazia.");
+        }
+
+        if (precoInicial <= 0) {
+            return ResultadoCriacaoLeilao.recusado("O preço inicial deve ser positivo.");
+        }
+
+        long timestamp = relogioLamport.avancar();
+        Leilao leilao = criarLeilao(descricaoItem.trim(), precoInicial);
+
+        System.out.println("[LAMPORT] Criação do leilão #" + leilao.obterId()
+                + " recebeu timestamp lógico " + timestamp + ".");
+
+        return ResultadoCriacaoLeilao.aceito(leilao, timestamp);
+    }
+
     /**
      * O bloqueio global mantém a ordem de processamento igual à ordem
      * dos timestamps de Lamport, facilitando a explicação do MVP.
@@ -162,6 +182,30 @@ public class GerenciadorLeiloes {
 
         public long obterTimestampLamport() {
             return timestampLamport;
+        }
+    }
+
+    public static class ResultadoCriacaoLeilao {
+        public final boolean aceito;
+        public final String mensagem;
+        public final Leilao leilao;
+        public final long timestampLamport;
+
+        private ResultadoCriacaoLeilao(
+                boolean aceito, String mensagem, Leilao leilao, long timestampLamport) {
+            this.aceito = aceito;
+            this.mensagem = mensagem;
+            this.leilao = leilao;
+            this.timestampLamport = timestampLamport;
+        }
+
+        public static ResultadoCriacaoLeilao aceito(Leilao leilao, long timestampLamport) {
+            return new ResultadoCriacaoLeilao(
+                    true, "Leilão criado com sucesso!", leilao, timestampLamport);
+        }
+
+        public static ResultadoCriacaoLeilao recusado(String motivo) {
+            return new ResultadoCriacaoLeilao(false, motivo, null, -1);
         }
     }
 }
