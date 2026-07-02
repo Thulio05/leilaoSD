@@ -3,26 +3,48 @@
 Projeto acadêmico em Java que demonstra comunicação por sockets, concorrência,
 relógio lógico de Lamport, replicação de estado, heartbeat e failover.
 
-## Arquivos
+## Estrutura
 
-| Arquivo | Responsabilidade |
+```text
+src/
+└── leilao/
+    ├── cliente/
+    │   └── ClienteLeilao.java
+    ├── dominio/
+    │   ├── GerenciadorLeiloes.java
+    │   ├── Lance.java
+    │   ├── Leilao.java
+    │   └── RelogioLamport.java
+    ├── persistencia/
+    │   ├── LogDistribuido.java
+    │   └── RepositorioUsuarios.java
+    └── servidor/
+        ├── PainelMonitoramento.java
+        ├── RegistroClientes.java
+        ├── ServidorLeilao.java
+        ├── ServidorReplica.java
+        └── TratadorCliente.java
+```
+
+| Pacote | Responsabilidade |
 |---|---|
-| `RelogioLamport.java` | Gera e sincroniza timestamps lógicos |
-| `Lance.java` | Representa um lance aceito |
-| `Leilao.java` | Mantém as regras e o estado de um leilão |
-| `GerenciadorLeiloes.java` | Coordena os leilões e cria o estado replicado |
-| `RegistroClientes.java` | Mantém clientes conectados e realiza broadcast |
-| `RepositorioUsuarios.java` | Cadastro e login de usuários, persistidos em arquivo |
-| `LogDistribuido.java` | Grava eventos com timestamp de Lamport em arquivo |
-| `TratadorCliente.java` | Atende um cliente em uma thread dedicada |
-| `ServidorLeilao.java` | Servidor primário, replicação e heartbeat |
-| `ServidorReplica.java` | Réplica passiva e failover por timeout |
-| `ClienteLeilao.java` | Cliente de terminal com reconexão automática |
+| `leilao.cliente` | Cliente de terminal com reconexão automática |
+| `leilao.dominio` | Regras do leilão, lances, relógio de Lamport e estado replicado |
+| `leilao.persistencia` | Cadastro de usuários e logs em arquivo |
+| `leilao.servidor` | Servidor primário, réplica, painel, broadcast e atendimento dos clientes |
 
 ## Compilação
 
+No PowerShell:
+
+```powershell
+javac -encoding UTF-8 -d out (Get-ChildItem -Recurse src -Filter *.java).FullName
+```
+
+No Git Bash:
+
 ```bash
-javac -encoding UTF-8 *.java
+javac -encoding UTF-8 -d out $(find src -name "*.java")
 ```
 
 ## Execução
@@ -32,19 +54,19 @@ Abra três terminais na pasta do projeto.
 1. Inicie a réplica:
 
 ```bash
-java ServidorReplica
+java -cp out leilao.servidor.ServidorReplica
 ```
 
 2. Inicie o servidor primário:
 
 ```bash
-java ServidorLeilao
+java -cp out leilao.servidor.ServidorLeilao
 ```
 
 3. Inicie o cliente:
 
 ```bash
-java ClienteLeilao
+java -cp out leilao.cliente.ClienteLeilao
 ```
 
 ## Comandos

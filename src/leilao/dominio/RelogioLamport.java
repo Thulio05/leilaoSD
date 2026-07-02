@@ -1,3 +1,5 @@
+package leilao.dominio;
+
 /**
  * Relógio lógico compartilhado pelas threads do servidor.
  */
