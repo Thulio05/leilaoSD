@@ -8,13 +8,14 @@ import leilao.persistencia.RepositorioUsuarios;
 
 import java.io.IOException;
 import java.io.ObjectOutputStream;
+import java.net.BindException;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.HashSet;
 import java.util.Set;
 
 /** Servidor primário: atende clientes, replica estado e envia heartbeat. */
-public class ServidorLeilao {
+public class ServidorLeilao implements CoordenadorPrimario {
 
     private static final int PORTA_CLIENTES = 5555;
     private static final String ENDERECO_REPLICA = "localhost";
@@ -61,6 +62,11 @@ public class ServidorLeilao {
             threadMonitorLeiloes.start();
 
             aceitarClientes();
+        } catch (BindException erro) {
+            System.out.println("[INFO] A porta " + PORTA_CLIENTES
+                    + " já está ocupada por um primário ativo.");
+            System.out.println("[INFO] Este processo vai retornar como servidor réplica.");
+            new ServidorReplica().iniciar();
         } catch (IOException erro) {
             System.out.println("[ALERTA] Erro fatal ao iniciar o servidor: " + erro.getMessage());
         }
@@ -93,6 +99,7 @@ public class ServidorLeilao {
         }
     }
 
+    @Override
     public void replicarAposLanceAceito(int idLeilao, Lance lance) {
         System.out.println("[REPLICAÇÃO] Lance no leilão #" + idLeilao
                 + " (Lamport=" + lance.obterTimestampLamport() + "). Enviando estado...");
@@ -103,6 +110,7 @@ public class ServidorLeilao {
                         + " sucesso=" + replicado);
     }
 
+    @Override
     public void replicarAposLeilaoCriado(Leilao leilao, long timestampLamport) {
         System.out.println("[REPLICAÇÃO] Leilão #" + leilao.obterId()
                 + " criado (Lamport=" + timestampLamport + "). Enviando estado...");
