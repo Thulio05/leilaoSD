@@ -15,14 +15,25 @@ public class ServidorReplica {
     private static final int PORTA_CLIENTES_APOS_PROMOCAO = 5555;
     private static final long INTERVALO_VERIFICACAO_MS = 2_000;
     private static final long TIMEOUT_FALHA_MS = 6_000;
+    private static final String ARQUIVO_USUARIOS = "usuarios.txt";
+    private static final String ARQUIVO_LOG = "log_replica.txt";
 
     private final GerenciadorLeiloes gerenciadorLeiloes = new GerenciadorLeiloes();
     private final RegistroClientes registroClientes = new RegistroClientes();
+    private final RepositorioUsuarios repositorioUsuarios =
+            new RepositorioUsuarios(ARQUIVO_USUARIOS);
+    private final LogDistribuido logDistribuido = new LogDistribuido(ARQUIVO_LOG);
     private volatile long ultimoSinalRecebidoEm;
     private volatile boolean primarioJaConectou;
     private volatile boolean assumiuControle;
     private ServerSocket servidorReplicacao;
     private Socket socketPrimarioAtual;
+
+    // [PAINEL] O painel começa identificado como "SECUNDÁRIO". Quando o
+    // failover ocorrer, chamamos painel.atualizarPapel() para mudar o
+    // texto exibido na página — sem reiniciar o servidor HTTP.
+    private final PainelMonitoramento painel =
+            new PainelMonitoramento(gerenciadorLeiloes, "SERVIDOR SECUNDÁRIO");
 
     public void iniciar() {
         System.out.println("==================================================");
@@ -34,6 +45,14 @@ public class ServidorReplica {
         Thread threadMonitor = new Thread(this::monitorarHeartbeat, "Thread-Monitor-Heartbeat");
         threadEscuta.start();
         threadMonitor.start();
+
+        // [PAINEL] O painel sobe junto com a réplica, já na porta 8080.
+        // Enquanto o primário estiver vivo, a página mostra "SECUNDÁRIO"
+        // e os dados replicados que chegam via snapshot. No momento do
+        // failover, painel.atualizarPapel() muda o texto em tempo real.
+        Thread threadPainel = new Thread(painel::iniciar, "Thread-Painel-Web");
+        threadPainel.setDaemon(true);
+        threadPainel.start();
 
         try {
             threadEscuta.join();
@@ -97,6 +116,8 @@ public class ServidorReplica {
         gerenciadorLeiloes.restaurarEstadoReplicado(estado);
         System.out.println("[REPLICAÇÃO] Estado recebido e aplicado "
                 + "(Lamport=" + estado.obterTimestampLamport() + ").");
+        logDistribuido.registrar(estado.obterTimestampLamport(),
+                "REPLICACAO_RECEBIDA");
     }
 
     private void processarHeartbeat(String texto) {
@@ -147,6 +168,20 @@ public class ServidorReplica {
         System.out.println("[FAILOVER] Réplica assumindo como novo servidor primário.");
         System.out.println("[FAILOVER] Estado recuperado:");
         System.out.println(gerenciadorLeiloes.listarLeiloes());
+        logDistribuido.registrar(gerenciadorLeiloes.obterLamportAtual(),
+                "FAILOVER replica_assumiu_controle");
+
+        // [PAINEL] Atualiza o rótulo exibido na página imediatamente.
+        // A próxima vez que o navegador recarregar (em até 2s) já vai
+        // mostrar a cor vermelha e o texto "SECUNDÁRIO → PRIMÁRIO",
+        // tornando o failover visível na tela para qualquer pessoa
+        // acompanhando pelo navegador durante a apresentação.
+        painel.atualizarPapel("SERVIDOR SECUNDÁRIO → ASSUMIU COMO PRIMÁRIO ⚡");
+
+        // Relê o arquivo compartilhado de usuários: o primário pode ter
+        // cadastrado gente nova depois que esta réplica subiu, e aqui é o
+        // momento em que esses dados passam a importar de verdade.
+        repositorioUsuarios.recarregarDoArquivo();
 
         Thread threadClientes =
                 new Thread(this::aceitarClientesComoPrimario, "Thread-Novo-Primario");
@@ -183,7 +218,8 @@ public class ServidorReplica {
 
                 TratadorCliente tratador =
                         new TratadorCliente(
-                                socketCliente, gerenciadorLeiloes, null, registroClientes);
+                                socketCliente, gerenciadorLeiloes, null, registroClientes,
+                                repositorioUsuarios, logDistribuido);
                 Thread threadCliente =
                         new Thread(tratador, "Thread-Cliente-" + socketCliente.getPort());
                 threadCliente.start();
@@ -213,17 +249,22 @@ public class ServidorReplica {
     private void anunciarEncerramento(Leilao leilao) {
         String vencedor = leilao.obterVencedorAtual();
         String mensagem;
+        String evento;
 
         if (vencedor == null) {
             mensagem = "[ENCERRAMENTO] Leilão #" + leilao.obterId()
                     + " encerrado sem lances.";
+            evento = "LEILAO_ENCERRADO leilao=" + leilao.obterId() + " vencedor=nenhum";
         } else {
             mensagem = "[ENCERRAMENTO] Leilão #" + leilao.obterId()
                     + " encerrado. Vencedor: " + vencedor
                     + " — R$ " + leilao.obterMaiorLanceAtual();
+            evento = "LEILAO_ENCERRADO leilao=" + leilao.obterId()
+                    + " vencedor=" + vencedor + " valor=" + leilao.obterMaiorLanceAtual();
         }
 
         System.out.println(mensagem);
+        logDistribuido.registrar(gerenciadorLeiloes.obterLamportAtual(), evento);
         registroClientes.enviarParaTodos(mensagem);
     }
 
