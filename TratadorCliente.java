@@ -119,6 +119,10 @@ public class TratadorCliente implements Runnable {
             case "historico":
                 processarHistorico(partes);
                 break;
+            case "criar":
+            case "criarleilao":
+                processarCriacaoLeilao(comando);
+                break;
             case "ajuda":
                 mostrarAjuda();
                 break;
@@ -128,6 +132,50 @@ public class TratadorCliente implements Runnable {
                 break;
             default:
                 enviarMensagem("Comando não reconhecido. Digite 'ajuda' para ver as opções.");
+        }
+    }
+
+    private void processarCriacaoLeilao(String comando) {
+        String[] partes = comando.split("\\s+", 3);
+        if (partes.length < 3) {
+            enviarMensagem("Uso correto: criarleilao <preco_inicial> <descricao>");
+            enviarMensagem("Exemplo: criarleilao 2500 PlayStation 5");
+            return;
+        }
+
+        try {
+            double precoInicial = Double.parseDouble(partes[1].replace(",", "."));
+            String descricao = partes[2].trim();
+
+            GerenciadorLeiloes.ResultadoCriacaoLeilao resultado =
+                    gerenciadorLeiloes.criarLeilaoDinamico(descricao, precoInicial);
+
+            if (!resultado.aceito) {
+                enviarMensagem("✗ Criação recusada: " + resultado.mensagem);
+                return;
+            }
+
+            if (servidorPrimario != null) {
+                servidorPrimario.replicarAposLeilaoCriado(
+                        resultado.leilao, resultado.timestampLamport);
+            }
+
+            logDistribuido.registrar(resultado.timestampLamport,
+                    "LEILAO_CRIADO leilao=" + resultado.leilao.obterId()
+                            + " usuario=" + nomeCliente
+                            + " precoInicial=" + precoInicial
+                            + " item=\"" + descricao + "\"");
+
+            String mensagem = "[ATUALIZAÇÃO GLOBAL] Novo leilão #"
+                    + resultado.leilao.obterId()
+                    + ": " + resultado.leilao.obterDescricaoItem()
+                    + " | Lance inicial: R$ "
+                    + String.format("%.2f", resultado.leilao.obterMaiorLanceAtual());
+
+            enviarMensagem("✓ " + resultado.mensagem);
+            registroClientes.enviarParaTodos(mensagem);
+        } catch (NumberFormatException erro) {
+            enviarMensagem("Preço inválido. Use: criarleilao <preco_inicial> <descricao>");
         }
     }
 
@@ -214,6 +262,7 @@ public class TratadorCliente implements Runnable {
         enviarMensagem("status <id>             - Mostra o status de um leilão");
         enviarMensagem("lance <id> <valor>      - Registra um lance");
         enviarMensagem("historico <id>          - Mostra o histórico de lances");
+        enviarMensagem("criarleilao <preco> <item> - Cria um novo leilão");
         enviarMensagem("ajuda                   - Mostra este menu");
         enviarMensagem("sair                    - Desconecta do servidor");
         enviarMensagem("=============================\n");

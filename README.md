@@ -54,6 +54,7 @@ listar
 status <id>
 lance <id> <valor>
 historico <id>
+criarleilao <preco_inicial> <descricao>
 ajuda
 sair
 ```
@@ -68,11 +69,13 @@ sair
 4. `Leilao.adicionarLance()` valida e altera atomicamente o leilão.
 5. O primário tenta replicar o estado antes de confirmar o lance ao cliente.
 6. O lance aceito é enviado por broadcast a todos os clientes conectados.
-7. Ao conectar ou reconectar, o cliente recebe o estado e os últimos lances.
-8. O primário envia heartbeat a cada 2 segundos.
-9. Após 6 segundos sem sinal, a réplica assume a porta de clientes.
-10. O cliente espera 8 segundos e tenta reconectar, reenviando nome e senha.
-11. Eventos relevantes (login, lances, replicação, failover, encerramento)
+7. Um cliente também pode criar novos leilões com `criarleilao`; o novo
+   estado é replicado e divulgado por broadcast.
+8. Ao conectar ou reconectar, o cliente recebe o estado e os últimos lances.
+9. O primário envia heartbeat a cada 2 segundos.
+10. Após 6 segundos sem sinal, a réplica assume a porta de clientes.
+11. O cliente espera 8 segundos e tenta reconectar, reenviando nome e senha.
+12. Eventos relevantes (login, criação de leilões, lances, replicação, failover, encerramento)
     são gravados com o timestamp de Lamport em `log_primario.txt` ou
     `log_replica.txt`, dependendo de qual processo está ativo no momento.
 
@@ -83,6 +86,7 @@ sair
 - `synchronized` para proteger seções críticas.
 - `ConcurrentHashMap` para acesso concorrente ao conjunto de leilões.
 - Registro concorrente de clientes e broadcast em tempo real.
+- Criação dinâmica de leilões e replicação do novo estado.
 - Relógio lógico de Lamport para ordenar lances.
 - Replicação completa de estado por serialização Java.
 - Heartbeat e detecção de falha por timeout.
