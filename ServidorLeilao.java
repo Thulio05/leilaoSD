@@ -12,12 +12,22 @@ public class ServidorLeilao {
     private static final String ENDERECO_REPLICA = "localhost";
     private static final int PORTA_REPLICACAO = 6000;
     private static final long INTERVALO_HEARTBEAT_MS = 2_000;
+    private static final String ARQUIVO_USUARIOS = "usuarios.txt";
+    private static final String ARQUIVO_LOG = "log_primario.txt";
 
     private final GerenciadorLeiloes gerenciadorLeiloes = new GerenciadorLeiloes();
     private final RegistroClientes registroClientes = new RegistroClientes();
+    private final RepositorioUsuarios repositorioUsuarios =
+            new RepositorioUsuarios(ARQUIVO_USUARIOS);
+    private final LogDistribuido logDistribuido = new LogDistribuido(ARQUIVO_LOG);
     private ServerSocket servidorClientes;
     private Socket socketReplicacao;
     private ObjectOutputStream saidaReplicacao;
+
+    // [PAINEL] Instância do painel web. Criada aqui para que o servidor
+    // primário controle seu ciclo de vida (inicio junto com o TCP).
+    private final PainelMonitoramento painel =
+            new PainelMonitoramento(gerenciadorLeiloes, "SERVIDOR PRIMÁRIO");
 
     public void iniciar() {
         try {
@@ -29,7 +39,16 @@ public class ServidorLeilao {
             System.out.println("==================================================");
 
             criarLeiloesDeExemplo();
+            logDistribuido.registrar(gerenciadorLeiloes.obterLamportAtual(),
+                    "SERVIDOR_INICIADO papel=PRIMARIO");
             enviarEstadoParaReplica(gerenciadorLeiloes.criarEstadoReplicado());
+
+            // [PAINEL] Sobe o painel web numa thread daemon independente.
+            // Não interfere no TCP: é só mais uma thread lendo o mesmo
+            // GerenciadorLeiloes que já é thread-safe por design.
+            Thread threadPainel = new Thread(painel::iniciar, "Thread-Painel-Web");
+            threadPainel.setDaemon(true);
+            threadPainel.start();
 
             Thread threadHeartbeat = new Thread(this::executarHeartbeat, "Thread-Heartbeat");
             threadHeartbeat.start();
@@ -60,7 +79,8 @@ public class ServidorLeilao {
 
                 TratadorCliente tratador =
                         new TratadorCliente(
-                                socketCliente, gerenciadorLeiloes, this, registroClientes);
+                                socketCliente, gerenciadorLeiloes, this, registroClientes,
+                                repositorioUsuarios, logDistribuido);
                 Thread threadCliente =
                         new Thread(tratador, "Thread-Cliente-" + socketCliente.getPort());
                 threadCliente.start();
@@ -75,7 +95,10 @@ public class ServidorLeilao {
         System.out.println("[REPLICAÇÃO] Lance no leilão #" + idLeilao
                 + " (Lamport=" + lance.obterTimestampLamport() + "). Enviando estado...");
 
-        enviarEstadoParaReplica(gerenciadorLeiloes.criarEstadoReplicado());
+        boolean replicado = enviarEstadoParaReplica(gerenciadorLeiloes.criarEstadoReplicado());
+        logDistribuido.registrar(lance.obterTimestampLamport(),
+                "REPLICACAO_ESTADO leilao=" + idLeilao
+                        + " sucesso=" + replicado);
     }
 
     /** Serializa as escritas para que heartbeat e estado não se misturem. */
@@ -189,17 +212,22 @@ public class ServidorLeilao {
     private void anunciarEncerramento(Leilao leilao) {
         String vencedor = leilao.obterVencedorAtual();
         String mensagem;
+        String evento;
 
         if (vencedor == null) {
             mensagem = "[ENCERRAMENTO] Leilão #" + leilao.obterId()
                     + " encerrado sem lances.";
+            evento = "LEILAO_ENCERRADO leilao=" + leilao.obterId() + " vencedor=nenhum";
         } else {
             mensagem = "[ENCERRAMENTO] Leilão #" + leilao.obterId()
                     + " encerrado. Vencedor: " + vencedor
                     + " — R$ " + leilao.obterMaiorLanceAtual();
+            evento = "LEILAO_ENCERRADO leilao=" + leilao.obterId()
+                    + " vencedor=" + vencedor + " valor=" + leilao.obterMaiorLanceAtual();
         }
 
         System.out.println(mensagem);
+        logDistribuido.registrar(gerenciadorLeiloes.obterLamportAtual(), evento);
         registroClientes.enviarParaTodos(mensagem);
     }
 

@@ -11,6 +11,8 @@ public class TratadorCliente implements Runnable {
     private final GerenciadorLeiloes gerenciadorLeiloes;
     private final ServidorLeilao servidorPrimario;
     private final RegistroClientes registroClientes;
+    private final RepositorioUsuarios repositorioUsuarios;
+    private final LogDistribuido logDistribuido;
     private String nomeCliente;
     private BufferedReader entrada;
     private PrintWriter saida;
@@ -23,11 +25,15 @@ public class TratadorCliente implements Runnable {
             Socket socket,
             GerenciadorLeiloes gerenciadorLeiloes,
             ServidorLeilao servidorPrimario,
-            RegistroClientes registroClientes) {
+            RegistroClientes registroClientes,
+            RepositorioUsuarios repositorioUsuarios,
+            LogDistribuido logDistribuido) {
         this.socket = socket;
         this.gerenciadorLeiloes = gerenciadorLeiloes;
         this.servidorPrimario = servidorPrimario;
         this.registroClientes = registroClientes;
+        this.repositorioUsuarios = repositorioUsuarios;
+        this.logDistribuido = logDistribuido;
     }
 
     @Override
@@ -38,19 +44,12 @@ public class TratadorCliente implements Runnable {
             registroClientes.adicionar(this);
 
             enviarMensagem("Bem-vindo ao Sistema de Leilão Distribuído!");
-            enviarMensagem("Digite seu nome de usuário:");
-            nomeCliente = entrada.readLine();
 
-            if (nomeCliente == null || nomeCliente.trim().isEmpty()) {
-                nomeCliente = "Cliente_" + socket.getPort();
+            if (!autenticar()) {
+                return;
             }
 
             enviarMensagem("Olá, " + nomeCliente + "! Digite 'ajuda' para ver os comandos.");
-
-            // O mesmo resumo é enviado na conexão inicial e na reconexão.
-            // Assim o cliente não precisa descobrir sozinho o que ocorreu enquanto esteve fora.
-            enviarMensagem("[SINCRONIZAÇÃO] Estado atual recebido do servidor:");
-            enviarMensagem(gerenciadorLeiloes.criarResumoAtualParaCliente());
 
             String comando;
             while (!encerramentoSolicitado && (comando = entrada.readLine()) != null) {
@@ -63,6 +62,52 @@ public class TratadorCliente implements Runnable {
             registroClientes.remover(this);
             fecharConexao();
         }
+    }
+
+    /**
+     * Pede nome e senha ao cliente. Se o nome ainda não existe, cadastra
+     * na hora — assim o cliente de terminal continua simples, sem precisar
+     * de um comando separado de "cadastrar" antes de "login".
+     *
+     * Retorna false se a conexão cair durante o login, para o chamador
+     * saber que deve interromper o atendimento.
+     */
+    private boolean autenticar() throws IOException {
+        enviarMensagem("Digite seu nome de usuário:");
+        String nomeDigitado = entrada.readLine();
+        if (nomeDigitado == null) {
+            return false;
+        }
+        nomeDigitado = nomeDigitado.trim();
+
+        enviarMensagem(repositorioUsuarios.existeUsuario(nomeDigitado)
+                ? "Digite sua senha:"
+                : "Usuário novo. Digite uma senha para cadastrar:");
+        String senhaDigitada = entrada.readLine();
+        if (senhaDigitada == null) {
+            return false;
+        }
+
+        RepositorioUsuarios.ResultadoAutenticacao resultado =
+                repositorioUsuarios.autenticarOuCadastrar(nomeDigitado, senhaDigitada);
+
+        if (!resultado.sucesso) {
+            enviarMensagem("✗ " + resultado.mensagem);
+            enviarMensagem("Conexão encerrada. Reconecte e tente novamente.");
+            return false;
+        }
+
+        nomeCliente = nomeDigitado;
+        logDistribuido.registrar(gerenciadorLeiloes.obterLamportAtual(),
+                (resultado.cadastroNovo ? "USUARIO_CADASTRADO " : "USUARIO_LOGIN ")
+                        + "usuario=" + nomeCliente);
+        enviarMensagem("✓ " + resultado.mensagem);
+
+        // O mesmo resumo é enviado na conexão inicial e na reconexão.
+        // Assim o cliente não precisa descobrir sozinho o que ocorreu enquanto esteve fora.
+        enviarMensagem("[SINCRONIZAÇÃO] Estado atual recebido do servidor:");
+        enviarMensagem(gerenciadorLeiloes.criarResumoAtualParaCliente());
+        return true;
     }
 
     private void processarComando(String comando) {
@@ -132,6 +177,9 @@ public class TratadorCliente implements Runnable {
                     gerenciadorLeiloes.registrarLance(idLeilao, nomeCliente, valor);
 
             if (!resultado.aceito) {
+                logDistribuido.registrar(gerenciadorLeiloes.obterLamportAtual(),
+                        "LANCE_RECUSADO leilao=" + idLeilao + " usuario=" + nomeCliente
+                                + " valor=" + valor + " motivo=\"" + resultado.mensagem + "\"");
                 enviarMensagem("✗ Lance recusado: " + resultado.mensagem);
                 return;
             }
@@ -140,6 +188,10 @@ public class TratadorCliente implements Runnable {
             if (servidorPrimario != null) {
                 servidorPrimario.replicarAposLanceAceito(idLeilao, resultado.lance);
             }
+
+            logDistribuido.registrar(resultado.lance.obterTimestampLamport(),
+                    "LANCE_ACEITO leilao=" + idLeilao + " usuario=" + nomeCliente
+                            + " valor=" + valor);
 
             enviarMensagem("✓ " + resultado.mensagem);
             enviarMensagem(gerenciadorLeiloes.obterStatusLeilao(idLeilao));

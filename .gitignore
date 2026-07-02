@@ -34,3 +34,8 @@ replay_pid*
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# Arquivos gerados durante execução
+usuarios.txt
+log_primario.txt
+log_replica.txt

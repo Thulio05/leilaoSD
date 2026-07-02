@@ -22,6 +22,7 @@ public class ClienteLeilao {
     private volatile boolean reconectando;
     private volatile boolean encerrando;
     private String nomeUsuario;
+    private String senhaUsuario;
 
     public boolean conectar() {
         return conectarAUmServidor(false);
@@ -43,8 +44,9 @@ public class ClienteLeilao {
                 entrada = new BufferedReader(new InputStreamReader(socket.getInputStream()));
                 conectado = true;
 
-                if (reenviarNome && nomeUsuario != null) {
+                if (reenviarNome && nomeUsuario != null && senhaUsuario != null) {
                     saida.println(nomeUsuario);
+                    saida.println(senhaUsuario);
                 }
 
                 System.out.println("[INFO] Conectado ao servidor " + papel + ".");
@@ -71,9 +73,18 @@ public class ClienteLeilao {
             while (!encerrando && scanner.hasNextLine()) {
                 String textoDigitado = scanner.nextLine();
 
-                // A primeira linha da sessão é o nome solicitado pelo servidor.
+                // As duas primeiras linhas da sessão são nome e senha,
+                // exigidas pelo servidor antes de liberar qualquer comando.
                 if (nomeUsuario == null) {
                     nomeUsuario = textoDigitado;
+                    if (!enviarTexto(textoDigitado)) {
+                        tratarQuedaDeConexao();
+                    }
+                    continue;
+                }
+
+                if (senhaUsuario == null) {
+                    senhaUsuario = textoDigitado;
                     if (!enviarTexto(textoDigitado)) {
                         tratarQuedaDeConexao();
                     }
