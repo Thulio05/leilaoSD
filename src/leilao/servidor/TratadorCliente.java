@@ -16,7 +16,7 @@ public class TratadorCliente implements Runnable {
 
     private final Socket socket;
     private final GerenciadorLeiloes gerenciadorLeiloes;
-    private final ServidorLeilao servidorPrimario;
+    private final CoordenadorPrimario coordenadorPrimario;
     private final RegistroClientes registroClientes;
     private final RepositorioUsuarios repositorioUsuarios;
     private final LogDistribuido logDistribuido;
@@ -28,13 +28,13 @@ public class TratadorCliente implements Runnable {
     public TratadorCliente(
             Socket socket,
             GerenciadorLeiloes gerenciadorLeiloes,
-            ServidorLeilao servidorPrimario,
+            CoordenadorPrimario coordenadorPrimario,
             RegistroClientes registroClientes,
             RepositorioUsuarios repositorioUsuarios,
             LogDistribuido logDistribuido) {
         this.socket = socket;
         this.gerenciadorLeiloes = gerenciadorLeiloes;
-        this.servidorPrimario = servidorPrimario;
+        this.coordenadorPrimario = coordenadorPrimario;
         this.registroClientes = registroClientes;
         this.repositorioUsuarios = repositorioUsuarios;
         this.logDistribuido = logDistribuido;
@@ -162,8 +162,8 @@ public class TratadorCliente implements Runnable {
                 return;
             }
 
-            if (servidorPrimario != null) {
-                servidorPrimario.replicarAposLeilaoCriado(
+            if (coordenadorPrimario != null) {
+                coordenadorPrimario.replicarAposLeilaoCriado(
                         resultado.leilao, resultado.timestampLamport);
             }
 
@@ -226,8 +226,8 @@ public class TratadorCliente implements Runnable {
                 return;
             }
 
-            if (servidorPrimario != null) {
-                servidorPrimario.replicarAposLanceAceito(idLeilao, resultado.lance);
+            if (coordenadorPrimario != null) {
+                coordenadorPrimario.replicarAposLanceAceito(idLeilao, resultado.lance);
             }
 
             logDistribuido.registrar(resultado.lance.obterTimestampLamport(),

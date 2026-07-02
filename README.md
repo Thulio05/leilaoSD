@@ -19,6 +19,7 @@ src/
     │   ├── LogDistribuido.java
     │   └── RepositorioUsuarios.java
     └── servidor/
+        ├── CoordenadorPrimario.java
         ├── PainelMonitoramento.java
         ├── RegistroClientes.java
         ├── ServidorLeilao.java
@@ -96,8 +97,12 @@ sair
 8. Ao conectar ou reconectar, o cliente recebe o estado e os últimos lances.
 9. O primário envia heartbeat a cada 2 segundos.
 10. Após 6 segundos sem sinal, a réplica assume a porta de clientes.
-11. O cliente espera 8 segundos e tenta reconectar, reenviando nome e senha.
-12. Eventos relevantes (login, criação de leilões, lances, replicação, failover, encerramento)
+11. Depois da promoção, a réplica também passa a replicar estado para um
+    novo secundário.
+12. Se o primário antigo voltar e a porta 5555 já estiver ocupada, ele não
+    tenta recuperar a liderança: ele inicia automaticamente como nova réplica.
+13. O cliente espera 8 segundos e tenta reconectar, reenviando nome e senha.
+14. Eventos relevantes (login, criação de leilões, lances, replicação, failover, encerramento)
     são gravados com o timestamp de Lamport em `log_primario.txt` ou
     `log_replica.txt`, dependendo de qual processo está ativo no momento.
 
@@ -113,6 +118,7 @@ sair
 - Replicação completa de estado por serialização Java.
 - Heartbeat e detecção de falha por timeout.
 - Failover automático para a réplica sobrevivente.
+- Reintegração do servidor antigo como nova réplica após o retorno.
 - Anti-sniping com extensão de 30 segundos.
 - Cadastro e login persistidos em arquivo, com senha em hash SHA-256.
 - Log distribuído de eventos com timestamp de Lamport, um arquivo por
@@ -120,6 +126,23 @@ sair
 
 O failover é determinístico para dois servidores. Ele não implementa o protocolo
 completo do algoritmo Bully, pois não há mensagens de eleição nem disputa de IDs.
+A liderança fica com o processo que mantém a porta 5555. Se o antigo primário
+voltar enquanto a réplica promovida ainda estiver ativa, ele entra como
+secundário para evitar dois primários ao mesmo tempo.
+
+## Teste de failover com retorno do primário antigo
+
+1. Compile o projeto.
+2. Abra a réplica com `java -cp out leilao.servidor.ServidorReplica`.
+3. Abra o primário com `java -cp out leilao.servidor.ServidorLeilao`.
+4. Abra um cliente, faça login e execute `listar` ou envie um lance.
+5. Pare o terminal do primário original.
+6. Aguarde cerca de 6 segundos: a réplica deve assumir a porta 5555.
+7. O cliente deve reconectar depois de 8 segundos.
+8. Rode novamente `java -cp out leilao.servidor.ServidorLeilao`.
+9. Como a porta 5555 já está ocupada, esse processo deve iniciar como réplica.
+10. Faça outro lance ou crie um leilão: o novo primário deve replicar o estado
+    para essa réplica de retorno.
 
 ## Persistência de usuários
 
@@ -130,9 +153,9 @@ arquivo apenas uma vez, no momento em que inicia. Por isso:
 - Um cadastro feito no primário só aparece para a réplica depois que ela
   relê o arquivo. Isso acontece automaticamente no instante do failover
   (`promoverParaPrimario()` chama `recarregarDoArquivo()`), e não antes.
-- Se o primário cair e voltar a subir como primário de novo, ele também
-  relê o arquivo do zero ao iniciar, então cadastros feitos enquanto ele
-  estava fora não se perdem.
+- Se o primário antigo cair e voltar enquanto a réplica promovida ainda está
+  ativa, ele entra como nova réplica e também relê o arquivo de usuários ao
+  iniciar.
 - Isto é uma simplificação aceitável para o MVP: não há sincronização de
   usuários em tempo real entre os dois processos, só na borda do failover.
 

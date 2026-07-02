@@ -1,12 +1,14 @@
 package leilao.servidor;
 
 import leilao.dominio.GerenciadorLeiloes;
+import leilao.dominio.Lance;
 import leilao.dominio.Leilao;
 import leilao.persistencia.LogDistribuido;
 import leilao.persistencia.RepositorioUsuarios;
 
 import java.io.IOException;
 import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.HashSet;
@@ -16,11 +18,13 @@ import java.util.Set;
  * Réplica passiva do servidor. Recebe estado e heartbeat e assume o
  * atendimento dos clientes quando o primário deixa de responder.
  */
-public class ServidorReplica {
+public class ServidorReplica implements CoordenadorPrimario {
 
     private static final int PORTA_REPLICACAO = 6000;
     private static final int PORTA_CLIENTES_APOS_PROMOCAO = 5555;
+    private static final String ENDERECO_REPLICA_RETORNO = "localhost";
     private static final long INTERVALO_VERIFICACAO_MS = 2_000;
+    private static final long INTERVALO_HEARTBEAT_RETORNO_MS = 2_000;
     private static final long TIMEOUT_FALHA_MS = 6_000;
     private static final String ARQUIVO_USUARIOS = "usuarios.txt";
     private static final String ARQUIVO_LOG = "log_replica.txt";
@@ -35,6 +39,8 @@ public class ServidorReplica {
     private volatile boolean assumiuControle;
     private ServerSocket servidorReplicacao;
     private Socket socketPrimarioAtual;
+    private Socket socketReplicaRetorno;
+    private ObjectOutputStream saidaReplicaRetorno;
 
     private final PainelMonitoramento painel =
             new PainelMonitoramento(gerenciadorLeiloes, "SERVIDOR SECUNDÁRIO");
@@ -176,8 +182,11 @@ public class ServidorReplica {
                 new Thread(this::aceitarClientesComoPrimario, "Thread-Novo-Primario");
         Thread threadMonitorLeiloes =
                 new Thread(this::monitorarLeiloesComoPrimario, "Thread-Monitor-Leiloes");
+        Thread threadHeartbeatRetorno =
+                new Thread(this::executarHeartbeatComoPrimario, "Thread-Heartbeat-Novo-Primario");
         threadClientes.start();
         threadMonitorLeiloes.start();
+        threadHeartbeatRetorno.start();
     }
 
     private void encerrarConexaoComPrimario() {
@@ -206,7 +215,7 @@ public class ServidorReplica {
 
                 TratadorCliente tratador =
                         new TratadorCliente(
-                                socketCliente, gerenciadorLeiloes, null, registroClientes,
+                                socketCliente, gerenciadorLeiloes, this, registroClientes,
                                 repositorioUsuarios, logDistribuido);
                 Thread threadCliente =
                         new Thread(tratador, "Thread-Cliente-" + socketCliente.getPort());
@@ -226,6 +235,7 @@ public class ServidorReplica {
                 for (Leilao leilao : gerenciadorLeiloes.obterTodosLeiloes().values()) {
                     if (!leilao.estaAtivo() && leiloesAnunciados.add(leilao.obterId())) {
                         anunciarEncerramento(leilao);
+                        enviarEstadoParaReplicaRetorno(gerenciadorLeiloes.criarEstadoReplicado());
                     }
                 }
             } catch (InterruptedException erro) {
@@ -254,6 +264,115 @@ public class ServidorReplica {
         System.out.println(mensagem);
         logDistribuido.registrar(gerenciadorLeiloes.obterLamportAtual(), evento);
         registroClientes.enviarParaTodos(mensagem);
+    }
+
+    @Override
+    public void replicarAposLanceAceito(int idLeilao, Lance lance) {
+        System.out.println("[REPLICAÇÃO] Novo primário replicando lance do leilão #"
+                + idLeilao + " (Lamport=" + lance.obterTimestampLamport() + ").");
+
+        boolean replicado = enviarEstadoParaReplicaRetorno(
+                gerenciadorLeiloes.criarEstadoReplicado());
+        logDistribuido.registrar(lance.obterTimestampLamport(),
+                "REPLICACAO_ESTADO leilao=" + idLeilao
+                        + " sucesso=" + replicado);
+    }
+
+    @Override
+    public void replicarAposLeilaoCriado(Leilao leilao, long timestampLamport) {
+        System.out.println("[REPLICAÇÃO] Novo primário replicando criação do leilão #"
+                + leilao.obterId() + " (Lamport=" + timestampLamport + ").");
+
+        boolean replicado = enviarEstadoParaReplicaRetorno(
+                gerenciadorLeiloes.criarEstadoReplicado());
+        logDistribuido.registrar(timestampLamport,
+                "REPLICACAO_ESTADO leilao=" + leilao.obterId()
+                        + " tipo=criacao sucesso=" + replicado);
+    }
+
+    private void executarHeartbeatComoPrimario() {
+        while (assumiuControle && !Thread.currentThread().isInterrupted()) {
+            try {
+                Thread.sleep(INTERVALO_HEARTBEAT_RETORNO_MS);
+                enviarHeartbeatComoPrimario();
+            } catch (InterruptedException erro) {
+                Thread.currentThread().interrupt();
+            }
+        }
+    }
+
+    private synchronized void enviarHeartbeatComoPrimario() {
+        if (saidaReplicaRetorno == null) {
+            if (!tentarConectarReplicaRetorno()) {
+                return;
+            }
+            enviarEstadoParaReplicaRetorno(gerenciadorLeiloes.criarEstadoReplicado());
+        }
+
+        try {
+            String heartbeat = "HEARTBEAT|" + gerenciadorLeiloes.obterLamportAtual();
+            saidaReplicaRetorno.writeObject(heartbeat);
+            saidaReplicaRetorno.flush();
+            saidaReplicaRetorno.reset();
+            System.out.println("[INFO] Heartbeat enviado para a réplica de retorno.");
+        } catch (IOException erro) {
+            System.out.println("[ALERTA] Falha ao enviar heartbeat para a réplica de retorno: "
+                    + erro.getMessage());
+            fecharConexaoReplicaRetorno();
+        }
+    }
+
+    private synchronized boolean enviarEstadoParaReplicaRetorno(
+            GerenciadorLeiloes.EstadoReplicado estado) {
+
+        if (saidaReplicaRetorno == null && !tentarConectarReplicaRetorno()) {
+            System.out.println("[INFO] Nenhuma réplica de retorno conectada no momento.");
+            return false;
+        }
+
+        try {
+            saidaReplicaRetorno.writeObject(estado);
+            saidaReplicaRetorno.flush();
+            saidaReplicaRetorno.reset();
+
+            System.out.println("[REPLICAÇÃO] Estado enviado para a réplica de retorno "
+                    + "(Lamport=" + estado.obterTimestampLamport() + ").");
+            return true;
+        } catch (IOException erro) {
+            System.out.println("[ALERTA] Falha ao replicar para a réplica de retorno: "
+                    + erro.getMessage());
+            fecharConexaoReplicaRetorno();
+            return false;
+        }
+    }
+
+    private synchronized boolean tentarConectarReplicaRetorno() {
+        if (saidaReplicaRetorno != null) {
+            return true;
+        }
+
+        try {
+            socketReplicaRetorno = new Socket(ENDERECO_REPLICA_RETORNO, PORTA_REPLICACAO);
+            saidaReplicaRetorno = new ObjectOutputStream(socketReplicaRetorno.getOutputStream());
+
+            System.out.println("[INFO] Réplica de retorno conectada em "
+                    + ENDERECO_REPLICA_RETORNO + ":" + PORTA_REPLICACAO + ".");
+            return true;
+        } catch (IOException erro) {
+            fecharConexaoReplicaRetorno();
+            return false;
+        }
+    }
+
+    private synchronized void fecharConexaoReplicaRetorno() {
+        try {
+            if (socketReplicaRetorno != null) {
+                socketReplicaRetorno.close();
+            }
+        } catch (IOException ignorado) {
+        }
+        socketReplicaRetorno = null;
+        saidaReplicaRetorno = null;
     }
 
     public static void main(String[] args) {
