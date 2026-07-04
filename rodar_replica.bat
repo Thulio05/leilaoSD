@@ -1,4 +1,6 @@
 @echo off
+cd /d "%~dp0"
+
 REM ================================================================
 REM  rodar_replica.bat — Inicia o Servidor Replica (Secundario)
 REM ================================================================

@@ -1,4 +1,6 @@
 @echo off
+cd /d "%~dp0"
+
 REM ================================================================
 REM  compilar.bat — Compila todo o projeto de uma vez
 REM ================================================================
@@ -13,24 +15,13 @@ echo Compilando o projeto...
 REM Cria a pasta de saida se nao existir
 if not exist out mkdir out
 
+REM Gera a lista de arquivos .java a partir da pasta src
+if exist sources.txt del sources.txt
+for /r src\leilao %%f in (*.java) do echo %%~f>> sources.txt
+
 REM Compila todos os arquivos .java encontrados nas subpastas
 REM O resultado vai para a pasta "out"
-javac -encoding UTF-8 -sourcepath . ^
-    leilao\config\ConfiguracaoRede.java ^
-    leilao\dominio\RelogioLamport.java ^
-    leilao\dominio\Lance.java ^
-    leilao\dominio\Leilao.java ^
-    leilao\dominio\GerenciadorLeiloes.java ^
-    leilao\persistencia\LogDistribuido.java ^
-    leilao\persistencia\RepositorioUsuarios.java ^
-    leilao\servidor\CoordenadorPrimario.java ^
-    leilao\servidor\RegistroClientes.java ^
-    leilao\servidor\PainelMonitoramento.java ^
-    leilao\servidor\TratadorCliente.java ^
-    leilao\servidor\ServidorLeilao.java ^
-    leilao\servidor\ServidorReplica.java ^
-    leilao\cliente\ClienteLeilao.java ^
-    -d out
+javac -encoding UTF-8 -d out @sources.txt
 
 REM Verifica se compilou com sucesso
 if %errorlevel% == 0 (

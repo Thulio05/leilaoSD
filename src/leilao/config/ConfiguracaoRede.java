@@ -1,7 +1,10 @@
 package leilao.config;
 
-import java.io.FileInputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.Properties;
 
 /**
@@ -46,12 +49,21 @@ public final class ConfiguracaoRede {
     }
 
     private void carregarArquivoSeExistir() {
-        try (FileInputStream entrada = new FileInputStream(ARQUIVO_CONFIGURACAO)) {
-            propriedades.load(entrada);
-            System.out.println("[CONFIG] " + ARQUIVO_CONFIGURACAO + " carregado.");
-        } catch (IOException erro) {
+        Path caminhoBase = Paths.get("").toAbsolutePath().normalize();
+        Path caminhoArquivo = caminhoBase.resolve(ARQUIVO_CONFIGURACAO);
+
+        if (!Files.exists(caminhoArquivo)) {
             System.out.println("[CONFIG] " + ARQUIVO_CONFIGURACAO
-                    + " não encontrado. Usando valores padrão (localhost).");
+                    + " não encontrado em " + caminhoArquivo
+                    + ". Usando valores padrão (localhost).");
+            return;
+        }
+
+        try (InputStream entrada = Files.newInputStream(caminhoArquivo)) {
+            propriedades.load(entrada);
+            System.out.println("[CONFIG] " + ARQUIVO_CONFIGURACAO + " carregado de " + caminhoArquivo + ".");
+        } catch (IOException erro) {
+            System.out.println("[CONFIG] Erro ao ler " + caminhoArquivo + ": " + erro.getMessage());
         }
     }
 
