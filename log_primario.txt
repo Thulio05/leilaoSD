@@ -8,3 +8,12 @@
 [Lamport=0     | 22:21:10] LEILAO_ENCERRADO leilao=1 vencedor=nenhum
 [Lamport=0     | 22:21:10] LEILAO_ENCERRADO leilao=2 vencedor=nenhum
 [Lamport=0     | 22:21:10] LEILAO_ENCERRADO leilao=3 vencedor=nenhum
+[Lamport=0     | 22:55:47] SERVIDOR_INICIADO papel=PRIMARIO
+[Lamport=0     | 23:11:50] SERVIDOR_INICIADO papel=PRIMARIO
+[Lamport=0     | 23:13:00] SERVIDOR_INICIADO papel=PRIMARIO
+[Lamport=0     | 23:14:20] SERVIDOR_INICIADO papel=PRIMARIO
+[Lamport=0     | 23:16:48] SERVIDOR_INICIADO papel=PRIMARIO
+[Lamport=0     | 23:17:01] SERVIDOR_INICIADO papel=PRIMARIO
+[Lamport=0     | 23:17:23] SERVIDOR_INICIADO papel=PRIMARIO
+[Lamport=0     | 23:22:23] LEILAO_ENCERRADO leilao=1 vencedor=nenhum
+[Lamport=0     | 23:22:29] LEILAO_ENCERRADO leilao=2 vencedor=nenhum

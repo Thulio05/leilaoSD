@@ -1,5 +1,0 @@
-[Lamport=0     | 22:11:16] REPLICACAO_RECEBIDA
-[Lamport=1     | 22:12:05] REPLICACAO_RECEBIDA
-[Lamport=2     | 22:12:33] REPLICACAO_RECEBIDA
-[Lamport=76    | 22:13:47] FAILOVER replica_assumiu_controle
-[Lamport=76    | 22:13:50] USUARIO_LOGIN usuario=gui
