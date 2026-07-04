@@ -12,3 +12,7 @@
 [Lamport=3     | 23:22:02] LEILAO_ENCERRADO leilao=1 vencedor=nenhum
 [Lamport=3     | 23:22:05] LEILAO_ENCERRADO leilao=2 vencedor=nenhum
 [Lamport=3     | 23:22:11] LEILAO_ENCERRADO leilao=3 vencedor=nenhum
+[Lamport=0     | 23:35:29] REPLICACAO_RECEBIDA
+[Lamport=8     | 23:35:51] FAILOVER replica_assumiu_controle
+[Lamport=0     | 23:37:02] REPLICACAO_RECEBIDA
+[Lamport=3     | 23:37:12] FAILOVER replica_assumiu_controle
