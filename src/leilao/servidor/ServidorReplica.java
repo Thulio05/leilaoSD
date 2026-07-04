@@ -162,34 +162,57 @@ public class ServidorReplica implements CoordenadorPrimario {
         }
     }
 
-    private synchronized void promoverParaPrimario() {
-        if (assumiuControle) {
-            return;
-        }
+private synchronized void promoverParaPrimario() {
+    if (assumiuControle) return;
+    assumiuControle = true;
+    encerrarConexaoComPrimario();
 
-        assumiuControle = true;
-        encerrarConexaoComPrimario();
+    System.out.println("[FAILOVER] Réplica assumindo como novo servidor primário.");
+    logDistribuido.registrar(gerenciadorLeiloes.obterLamportAtual(),
+            "FAILOVER replica_assumiu_controle");
+    painel.atualizarPapel("SERVIDOR SECUNDÁRIO → ASSUMIU COMO PRIMÁRIO ⚡");
+    repositorioUsuarios.recarregarDoArquivo();
 
-        System.out.println("[FAILOVER] Réplica assumindo como novo servidor primário.");
-        System.out.println("[FAILOVER] Estado recuperado:");
-        System.out.println(gerenciadorLeiloes.listarLeiloes());
-        logDistribuido.registrar(gerenciadorLeiloes.obterLamportAtual(),
-                "FAILOVER replica_assumiu_controle");
-
-        painel.atualizarPapel("SERVIDOR SECUNDÁRIO → ASSUMIU COMO PRIMÁRIO ⚡");
-
-        repositorioUsuarios.recarregarDoArquivo();
-
-        Thread threadClientes =
-                new Thread(this::aceitarClientesComoPrimario, "Thread-Novo-Primario");
-        Thread threadMonitorLeiloes =
-                new Thread(this::monitorarLeiloesComoPrimario, "Thread-Monitor-Leiloes");
-        Thread threadHeartbeatRetorno =
-                new Thread(this::executarHeartbeatComoPrimario, "Thread-Heartbeat-Novo-Primario");
-        threadClientes.start();
-        threadMonitorLeiloes.start();
-        threadHeartbeatRetorno.start();
+    // Abre a porta de clientes AQUI, de forma síncrona,
+    // antes de iniciar as threads — assim qualquer processo que
+    // tentar abrir essa porta depois vai encontrá-la ocupada.
+    ServerSocket servidorClientes;
+    try {
+        servidorClientes = new ServerSocket(PORTA_CLIENTES_APOS_PROMOCAO);
+        System.out.println("[INFO] Novo primário aceitando clientes na porta "
+                + PORTA_CLIENTES_APOS_PROMOCAO + ".");
+    } catch (IOException erro) {
+        System.out.println("[ALERTA] Não foi possível abrir porta de clientes: "
+                + erro.getMessage());
+        return;
     }
+
+    // Captura final para usar dentro da lambda
+    final ServerSocket socketFinal = servidorClientes;
+
+    Thread threadClientes = new Thread(() -> {
+        try {
+            while (true) {
+                Socket socketCliente = socketFinal.accept();
+                TratadorCliente tratador = new TratadorCliente(
+                        socketCliente, gerenciadorLeiloes, this,
+                        registroClientes, repositorioUsuarios, logDistribuido);
+                new Thread(tratador, "Thread-Cliente-" + socketCliente.getPort()).start();
+            }
+        } catch (IOException erro) {
+            System.out.println("[ALERTA] Falha ao aceitar cliente: " + erro.getMessage());
+        }
+    }, "Thread-Novo-Primario");
+
+    Thread threadMonitorLeiloes =
+            new Thread(this::monitorarLeiloesComoPrimario, "Thread-Monitor-Leiloes");
+    Thread threadHeartbeatRetorno =
+            new Thread(this::executarHeartbeatComoPrimario, "Thread-Heartbeat-Novo-Primario");
+
+    threadClientes.start();
+    threadMonitorLeiloes.start();
+    threadHeartbeatRetorno.start();
+}
 
     private void encerrarConexaoComPrimario() {
         try {
