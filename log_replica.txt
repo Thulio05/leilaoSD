@@ -3,3 +3,12 @@
 [Lamport=2     | 22:12:33] REPLICACAO_RECEBIDA
 [Lamport=76    | 22:13:47] FAILOVER replica_assumiu_controle
 [Lamport=76    | 22:13:50] USUARIO_LOGIN usuario=gui
+[Lamport=0     | 23:13:00] REPLICACAO_RECEBIDA
+[Lamport=16    | 23:13:36] FAILOVER replica_assumiu_controle
+[Lamport=0     | 23:14:40] REPLICACAO_RECEBIDA
+[Lamport=46    | 23:16:16] FAILOVER replica_assumiu_controle
+[Lamport=0     | 23:17:01] REPLICACAO_RECEBIDA
+[Lamport=3     | 23:17:11] FAILOVER replica_assumiu_controle
+[Lamport=3     | 23:22:02] LEILAO_ENCERRADO leilao=1 vencedor=nenhum
+[Lamport=3     | 23:22:05] LEILAO_ENCERRADO leilao=2 vencedor=nenhum
+[Lamport=3     | 23:22:11] LEILAO_ENCERRADO leilao=3 vencedor=nenhum

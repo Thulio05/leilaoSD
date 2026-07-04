@@ -1,14 +1,14 @@
-C:\Users\guilm\Downloads\leilao-distribuido\src\leilao\cliente\ClienteLeilao.java
-C:\Users\guilm\Downloads\leilao-distribuido\src\leilao\config\ConfiguracaoRede.java
-C:\Users\guilm\Downloads\leilao-distribuido\src\leilao\dominio\GerenciadorLeiloes.java
-C:\Users\guilm\Downloads\leilao-distribuido\src\leilao\dominio\Lance.java
-C:\Users\guilm\Downloads\leilao-distribuido\src\leilao\dominio\Leilao.java
-C:\Users\guilm\Downloads\leilao-distribuido\src\leilao\dominio\RelogioLamport.java
-C:\Users\guilm\Downloads\leilao-distribuido\src\leilao\persistencia\LogDistribuido.java
-C:\Users\guilm\Downloads\leilao-distribuido\src\leilao\persistencia\RepositorioUsuarios.java
-C:\Users\guilm\Downloads\leilao-distribuido\src\leilao\servidor\CoordenadorPrimario.java
-C:\Users\guilm\Downloads\leilao-distribuido\src\leilao\servidor\PainelMonitoramento.java
-C:\Users\guilm\Downloads\leilao-distribuido\src\leilao\servidor\RegistroClientes.java
-C:\Users\guilm\Downloads\leilao-distribuido\src\leilao\servidor\ServidorLeilao.java
-C:\Users\guilm\Downloads\leilao-distribuido\src\leilao\servidor\ServidorReplica.java
-C:\Users\guilm\Downloads\leilao-distribuido\src\leilao\servidor\TratadorCliente.java
+C:\Users\gilli\OneDrive\탍ea de Trabalho\leilao\leilaoSD\src\leilao\cliente\ClienteLeilao.java
+C:\Users\gilli\OneDrive\탍ea de Trabalho\leilao\leilaoSD\src\leilao\config\ConfiguracaoRede.java
+C:\Users\gilli\OneDrive\탍ea de Trabalho\leilao\leilaoSD\src\leilao\dominio\GerenciadorLeiloes.java
+C:\Users\gilli\OneDrive\탍ea de Trabalho\leilao\leilaoSD\src\leilao\dominio\Lance.java
+C:\Users\gilli\OneDrive\탍ea de Trabalho\leilao\leilaoSD\src\leilao\dominio\Leilao.java
+C:\Users\gilli\OneDrive\탍ea de Trabalho\leilao\leilaoSD\src\leilao\dominio\RelogioLamport.java
+C:\Users\gilli\OneDrive\탍ea de Trabalho\leilao\leilaoSD\src\leilao\persistencia\LogDistribuido.java
+C:\Users\gilli\OneDrive\탍ea de Trabalho\leilao\leilaoSD\src\leilao\persistencia\RepositorioUsuarios.java
+C:\Users\gilli\OneDrive\탍ea de Trabalho\leilao\leilaoSD\src\leilao\servidor\CoordenadorPrimario.java
+C:\Users\gilli\OneDrive\탍ea de Trabalho\leilao\leilaoSD\src\leilao\servidor\PainelMonitoramento.java
+C:\Users\gilli\OneDrive\탍ea de Trabalho\leilao\leilaoSD\src\leilao\servidor\RegistroClientes.java
+C:\Users\gilli\OneDrive\탍ea de Trabalho\leilao\leilaoSD\src\leilao\servidor\ServidorLeilao.java
+C:\Users\gilli\OneDrive\탍ea de Trabalho\leilao\leilaoSD\src\leilao\servidor\ServidorReplica.java
+C:\Users\gilli\OneDrive\탍ea de Trabalho\leilao\leilaoSD\src\leilao\servidor\TratadorCliente.java
