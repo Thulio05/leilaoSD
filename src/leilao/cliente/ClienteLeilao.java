@@ -1,5 +1,7 @@
 package leilao.cliente;
 
+import leilao.config.ConfiguracaoRede;
+
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -11,9 +13,9 @@ import java.util.Scanner;
 /** Cliente de terminal com leitura assíncrona e reconexão automática. */
 public class ClienteLeilao {
 
-    private static final String[] SERVIDORES_CANDIDATOS = {"localhost", "localhost"};
-    private static final int PORTA_CLIENTES = 5555;
-    private static final int TIMEOUT_CONEXAO_MS = 3_000;
+    private static final ConfiguracaoRede CONFIGURACAO = ConfiguracaoRede.instancia();
+    private static final int PORTA_CLIENTES = CONFIGURACAO.obterPortaClientes();
+    private static final int TIMEOUT_CONEXAO_MS = CONFIGURACAO.obterTimeoutConexaoMs();
     private static final long ESPERA_RECONEXAO_MS = 8_000;
 
     private Socket socket;
@@ -29,10 +31,22 @@ public class ClienteLeilao {
         return conectarAUmServidor(false);
     }
 
+    /**
+     * Tenta o servidor primário e, se estiver fora do ar (ou sem rede até
+     * ele), tenta a réplica em seguida. Os dois endereços vêm do
+     * config.properties, então funcionam tanto numa única máquina quanto
+     * em máquinas diferentes na rede.
+     */
     private boolean conectarAUmServidor(boolean reenviarNome) {
-        for (int indice = 0; indice < SERVIDORES_CANDIDATOS.length; indice++) {
-            String endereco = SERVIDORES_CANDIDATOS[indice];
-            String papel = indice == 0 ? "PRIMÁRIO" : "SECUNDÁRIO";
+        String[] enderecosCandidatos = {
+                CONFIGURACAO.obterEnderecoPrimario(),
+                CONFIGURACAO.obterEnderecoReplica()
+        };
+        String[] papeis = {"PRIMÁRIO", "SECUNDÁRIO"};
+
+        for (int indice = 0; indice < enderecosCandidatos.length; indice++) {
+            String endereco = enderecosCandidatos[indice];
+            String papel = papeis[indice];
 
             System.out.println("[INFO] Tentando conectar ao servidor " + papel
                     + " (" + endereco + ":" + PORTA_CLIENTES + ")...");

@@ -1,5 +1,6 @@
 package leilao.servidor;
 
+import leilao.config.ConfiguracaoRede;
 import leilao.dominio.GerenciadorLeiloes;
 import leilao.dominio.Lance;
 import leilao.dominio.Leilao;
@@ -20,9 +21,10 @@ import java.util.Set;
  */
 public class ServidorReplica implements CoordenadorPrimario {
 
-    private static final int PORTA_REPLICACAO = 6000;
-    private static final int PORTA_CLIENTES_APOS_PROMOCAO = 5555;
-    private static final String ENDERECO_REPLICA_RETORNO = "localhost";
+    private static final ConfiguracaoRede CONFIGURACAO = ConfiguracaoRede.instancia();
+    private static final int PORTA_REPLICACAO = CONFIGURACAO.obterPortaReplicacao();
+    private static final int PORTA_CLIENTES_APOS_PROMOCAO = CONFIGURACAO.obterPortaClientes();
+    private static final String ENDERECO_REPLICA_RETORNO = CONFIGURACAO.obterEnderecoPrimario();
     private static final long INTERVALO_VERIFICACAO_MS = 2_000;
     private static final long INTERVALO_HEARTBEAT_RETORNO_MS = 2_000;
     private static final long TIMEOUT_FALHA_MS = 6_000;
@@ -43,7 +45,14 @@ public class ServidorReplica implements CoordenadorPrimario {
     private ObjectOutputStream saidaReplicaRetorno;
 
     private final PainelMonitoramento painel =
-            new PainelMonitoramento(gerenciadorLeiloes, "SERVIDOR SECUNDÁRIO");
+            new PainelMonitoramento(
+                    gerenciadorLeiloes,
+                    "SERVIDOR SECUNDÁRIO",
+                    this,
+                    registroClientes,
+                    repositorioUsuarios,
+                    logDistribuido,
+                    () -> assumiuControle);
 
     public void iniciar() {
         System.out.println("==================================================");
@@ -160,34 +169,57 @@ public class ServidorReplica implements CoordenadorPrimario {
         }
     }
 
-    private synchronized void promoverParaPrimario() {
-        if (assumiuControle) {
-            return;
-        }
+private synchronized void promoverParaPrimario() {
+    if (assumiuControle) return;
+    assumiuControle = true;
+    encerrarConexaoComPrimario();
 
-        assumiuControle = true;
-        encerrarConexaoComPrimario();
+    System.out.println("[FAILOVER] Réplica assumindo como novo servidor primário.");
+    logDistribuido.registrar(gerenciadorLeiloes.obterLamportAtual(),
+            "FAILOVER replica_assumiu_controle");
+    painel.atualizarPapel("SERVIDOR SECUNDÁRIO → ASSUMIU COMO PRIMÁRIO ⚡");
+    repositorioUsuarios.recarregarDoArquivo();
 
-        System.out.println("[FAILOVER] Réplica assumindo como novo servidor primário.");
-        System.out.println("[FAILOVER] Estado recuperado:");
-        System.out.println(gerenciadorLeiloes.listarLeiloes());
-        logDistribuido.registrar(gerenciadorLeiloes.obterLamportAtual(),
-                "FAILOVER replica_assumiu_controle");
-
-        painel.atualizarPapel("SERVIDOR SECUNDÁRIO → ASSUMIU COMO PRIMÁRIO ⚡");
-
-        repositorioUsuarios.recarregarDoArquivo();
-
-        Thread threadClientes =
-                new Thread(this::aceitarClientesComoPrimario, "Thread-Novo-Primario");
-        Thread threadMonitorLeiloes =
-                new Thread(this::monitorarLeiloesComoPrimario, "Thread-Monitor-Leiloes");
-        Thread threadHeartbeatRetorno =
-                new Thread(this::executarHeartbeatComoPrimario, "Thread-Heartbeat-Novo-Primario");
-        threadClientes.start();
-        threadMonitorLeiloes.start();
-        threadHeartbeatRetorno.start();
+    // Abre a porta de clientes AQUI, de forma síncrona,
+    // antes de iniciar as threads — assim qualquer processo que
+    // tentar abrir essa porta depois vai encontrá-la ocupada.
+    ServerSocket servidorClientes;
+    try {
+        servidorClientes = new ServerSocket(PORTA_CLIENTES_APOS_PROMOCAO);
+        System.out.println("[INFO] Novo primário aceitando clientes na porta "
+                + PORTA_CLIENTES_APOS_PROMOCAO + ".");
+    } catch (IOException erro) {
+        System.out.println("[ALERTA] Não foi possível abrir porta de clientes: "
+                + erro.getMessage());
+        return;
     }
+
+    // Captura final para usar dentro da lambda
+    final ServerSocket socketFinal = servidorClientes;
+
+    Thread threadClientes = new Thread(() -> {
+        try {
+            while (true) {
+                Socket socketCliente = socketFinal.accept();
+                TratadorCliente tratador = new TratadorCliente(
+                        socketCliente, gerenciadorLeiloes, this,
+                        registroClientes, repositorioUsuarios, logDistribuido);
+                new Thread(tratador, "Thread-Cliente-" + socketCliente.getPort()).start();
+            }
+        } catch (IOException erro) {
+            System.out.println("[ALERTA] Falha ao aceitar cliente: " + erro.getMessage());
+        }
+    }, "Thread-Novo-Primario");
+
+    Thread threadMonitorLeiloes =
+            new Thread(this::monitorarLeiloesComoPrimario, "Thread-Monitor-Leiloes");
+    Thread threadHeartbeatRetorno =
+            new Thread(this::executarHeartbeatComoPrimario, "Thread-Heartbeat-Novo-Primario");
+
+    threadClientes.start();
+    threadMonitorLeiloes.start();
+    threadHeartbeatRetorno.start();
+}
 
     private void encerrarConexaoComPrimario() {
         try {
@@ -352,7 +384,10 @@ public class ServidorReplica implements CoordenadorPrimario {
         }
 
         try {
-            socketReplicaRetorno = new Socket(ENDERECO_REPLICA_RETORNO, PORTA_REPLICACAO);
+            socketReplicaRetorno = new Socket();
+            socketReplicaRetorno.connect(
+                    new java.net.InetSocketAddress(ENDERECO_REPLICA_RETORNO, PORTA_REPLICACAO),
+                    CONFIGURACAO.obterTimeoutConexaoMs());
             saidaReplicaRetorno = new ObjectOutputStream(socketReplicaRetorno.getOutputStream());
 
             System.out.println("[INFO] Réplica de retorno conectada em "

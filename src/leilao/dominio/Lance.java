@@ -25,6 +25,14 @@ public class Lance implements Serializable {
         return timestampLamport;
     }
 
+    public String obterNomeLicitante() {
+        return nomeLicitante;
+    }
+
+    public double obterValor() {
+        return valor;
+    }
+
     @Override
     public String toString() {
         String horario = horarioReal.format(DateTimeFormatter.ofPattern("HH:mm:ss"));

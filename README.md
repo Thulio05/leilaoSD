@@ -1,173 +1,341 @@
-# Sistema de Leilão Distribuído — MVP de Terminal
+# Sistema de Leilão Distribuído — Guia Completo
 
-Projeto acadêmico em Java que demonstra comunicação por sockets, concorrência,
-relógio lógico de Lamport, replicação de estado, heartbeat e failover.
+Projeto acadêmico em Java que demonstra os principais conceitos de
+Sistemas Distribuídos: comunicação por sockets TCP, concorrência,
+Relógio de Lamport, replicação de estado, heartbeat e failover automático.
 
-## Estrutura
+---
 
-```text
-src/
-└── leilao/
-    ├── cliente/
-    │   └── ClienteLeilao.java
-    ├── dominio/
-    │   ├── GerenciadorLeiloes.java
-    │   ├── Lance.java
-    │   ├── Leilao.java
-    │   └── RelogioLamport.java
-    ├── persistencia/
-    │   ├── LogDistribuido.java
-    │   └── RepositorioUsuarios.java
-    └── servidor/
-        ├── CoordenadorPrimario.java
-        ├── PainelMonitoramento.java
-        ├── RegistroClientes.java
-        ├── ServidorLeilao.java
-        ├── ServidorReplica.java
-        └── TratadorCliente.java
+## O que cada arquivo faz
+
+### Configuração
+
+**`leilao/config/ConfiguracaoRede.java`**
+Lê o arquivo `config.properties` e fornece os endereços IP e portas para
+todo o sistema. É o único lugar onde ficam os endereços de rede — quando
+você precisa mudar de `localhost` para IPs reais de duas máquinas, só
+mexe no `config.properties`, sem tocar em nenhum outro arquivo Java.
+
+Método principal: `instancia()` — retorna a configuração carregada.
+
+---
+
+### Domínio (as regras do leilão)
+
+**`leilao/dominio/RelogioLamport.java`**
+Implementa o Relógio Lógico de Lamport. Em vez de depender do relógio
+do computador (que pode estar dessincronizado entre máquinas), mantém
+um contador inteiro que só cresce. Garante que os lances sejam ordenados
+corretamente mesmo que cheguem ao mesmo milissegundo.
+
+Métodos:
+- `avancar()` — incrementa o contador e retorna o novo valor. Chamado antes de processar cada lance.
+- `sincronizarRecebimento(timestamp)` — aplica a regra `L = max(L, recebido) + 1`. Chamado ao receber mensagens de outra máquina.
+- `obterValorAtual()` — consulta o valor atual sem incrementar.
+
+---
+
+**`leilao/dominio/Lance.java`**
+Representa um lance aceito. Armazena quem deu o lance, quanto ofereceu,
+e qual era o timestamp de Lamport naquele momento. Implementa
+`Serializable` para poder ser enviado pelo socket entre máquinas.
+
+---
+
+**`leilao/dominio/Leilao.java`**
+Representa um item sendo leiloado. Contém as regras de negócio: validar
+se um lance é maior que o atual, registrar o vencedor, controlar o
+cronômetro e aplicar o anti-sniping (extensão de 30s se o lance chegar
+nos últimos 30s).
+
+Método principal: `adicionarLance(nome, valor, timestamp)` — é
+`synchronized`, o que significa que apenas uma thread por vez consegue
+entrar neste método. Isso evita que dois lances simultâneos de valores
+diferentes sejam ambos aceitos, o que seria uma inconsistência.
+
+---
+
+**`leilao/dominio/GerenciadorLeiloes.java`**
+Mantém a lista de todos os leilões em memória e coordena o Relógio de
+Lamport. É o "cérebro" do sistema: quando chega um lance, primeiro avança
+o relógio (`relogioLamport.avancar()`), depois repassa para o leilão
+correspondente.
+
+Métodos principais:
+- `registrarLance(id, nome, valor)` — avança o Lamport e tenta registrar o lance no leilão.
+- `criarEstadoReplicado()` — empacota todos os leilões + relógio em um objeto para enviar à réplica.
+- `restaurarEstadoReplicado(estado)` — substitui o estado local pelo estado recebido do primário.
+
+---
+
+### Persistência (salvar dados em arquivo)
+
+**`leilao/persistencia/RepositorioUsuarios.java`**
+Salva e carrega usuários de um arquivo `usuarios.txt`. Nunca guarda a
+senha em texto puro — usa hash SHA-256 (função que embaralha a senha de
+forma irreversível) antes de salvar. Ao fazer login, embaralha a senha
+digitada e compara com o hash salvo.
+
+Método principal: `autenticarOuCadastrar(nome, senha)` — se o nome não
+existe, cria o cadastro. Se existe, verifica a senha.
+
+---
+
+**`leilao/persistencia/LogDistribuido.java`**
+Grava eventos em um arquivo de texto (`log_primario.txt` ou
+`log_replica.txt`), sempre incluindo o timestamp de Lamport. Isso permite
+comparar os dois arquivos depois de um teste com failover e verificar que
+os mesmos eventos aparecem na mesma ordem lógica nos dois servidores.
+
+---
+
+### Servidor
+
+**`leilao/servidor/CoordenadorPrimario.java`**
+Interface (contrato) que define o que um servidor primário deve saber
+fazer: replicar após um lance aceito e replicar após um leilão criado.
+Tanto o `ServidorLeilao` quanto o `ServidorReplica` (quando promovido)
+implementam essa interface — o `TratadorCliente` usa ela sem precisar
+saber quem é quem.
+
+---
+
+**`leilao/servidor/RegistroClientes.java`**
+Mantém a lista de todos os clientes TCP conectados no momento. Quando um
+lance é aceito, o servidor usa este registro para fazer broadcast —
+enviar a notificação para todos os clientes de uma vez.
+
+Método principal: `enviarParaTodos(mensagem)` — percorre todos os
+clientes conectados e envia a mensagem a cada um.
+
+---
+
+**`leilao/servidor/PainelMonitoramento.java`**
+Sobe um mini servidor HTTP na porta 8080 usando apenas bibliotecas do
+próprio Java (sem instalar nada extra). Qualquer navegador na rede pode
+acessar `http://<IP>:8080/` para ver os leilões, autenticar usuário,
+criar novos leilões e enviar lances.
+
+As ações da interface web só ficam habilitadas no servidor que está
+atuando como primário. Na réplica passiva, a página fica em modo leitura
+para evitar que dois servidores aceitem alterações ao mesmo tempo.
+
+Método `atualizarPapel(texto)` — chamado no momento do failover para
+mudar o texto da página e habilitar as ações no novo primário.
+
+---
+
+**`leilao/servidor/TratadorCliente.java`**
+Atende UM cliente em uma thread dedicada. O servidor cria uma instância
+desta classe e uma thread nova para cada cliente que se conecta, usando
+`new Thread(tratador).start()`. Isso é a base da concorrência: cada
+cliente tem sua própria thread independente.
+
+Responsabilidades: autenticar o usuário, processar comandos (`listar`,
+`lance`, `status`, `historico`, `criarleilao`, `sair`) e enviar as
+respostas.
+
+---
+
+**`leilao/servidor/ServidorLeilao.java`**
+O servidor primário. Tem quatro tarefas rodando em paralelo em threads
+separadas:
+
+1. Aceitar novos clientes TCP (thread principal)
+2. Enviar heartbeat à réplica a cada 2s (Thread-Heartbeat)
+3. Verificar leilões encerrados (Thread-Monitor-Leiloes)
+4. Servir o painel web HTTP (Thread-Painel-Web, daemon)
+
+Quando um lance é aceito pelo `TratadorCliente`, ele chama
+`replicarAposLanceAceito()`, que empacota todo o estado e envia pelo
+socket para o `ServidorReplica`.
+
+---
+
+**`leilao/servidor/ServidorReplica.java`**
+O servidor secundário (réplica). Enquanto o primário está de pé, só
+escuta e atualiza seu estado interno com os snapshots recebidos.
+
+Detecção de falha: uma thread verifica a cada 2 segundos se já passou
+mais de 6 segundos sem nenhum sinal do primário. Se sim, chama
+`promoverParaPrimario()`, que:
+1. Assume a porta 5555 e começa a atender clientes
+2. Muda a cor do painel web para vermelho
+3. Habilita login, criação de leilão e lances pela interface web
+4. Relê o arquivo de usuários para pegar cadastros novos feitos pelo primário
+
+---
+
+### Cliente
+
+**`leilao/cliente/ClienteLeilao.java`**
+Cliente de terminal. Tenta conectar ao primário e, se não conseguir, tenta
+a réplica. Usa duas threads:
+- Thread principal: lê o que o usuário digita e envia ao servidor
+- Thread daemon: fica lendo respostas do servidor e exibindo na tela
+
+Se a conexão cair, tenta reconectar automaticamente a cada 8 segundos
+(tempo suficiente para o failover terminar no servidor).
+
+---
+
+## Como rodar em duas máquinas
+
+### Passo 1 — Instalar o Java nas duas máquinas
+
+Acesse **https://adoptium.net**, baixe e instale o Java 21 (LTS).
+
+Para confirmar: abra o Prompt de Comando e digite `java -version`.
+Deve aparecer algo com `21`.
+
+### Passo 2 — Copiar os arquivos
+
+Copie a pasta inteira do projeto para as duas máquinas. Pode usar um
+pendrive, Google Drive, ou qualquer forma que preferir.
+
+### Passo 3 — Descobrir os IPs das máquinas
+
+Em cada máquina, abra o Prompt de Comando e digite:
+
+```
+ipconfig
 ```
 
-| Pacote | Responsabilidade |
-|---|---|
-| `leilao.cliente` | Cliente de terminal com reconexão automática |
-| `leilao.dominio` | Regras do leilão, lances, relógio de Lamport e estado replicado |
-| `leilao.persistencia` | Cadastro de usuários e logs em arquivo |
-| `leilao.servidor` | Servidor primário, réplica, painel, broadcast e atendimento dos clientes |
+Procure por **Endereço IPv4**. Vai ser algo como `192.168.1.10`.
 
-## Compilação
+> ⚠️ Os dois computadores precisam estar na mesma rede Wi-Fi ou cabo
+> para se enxergar. Se um estiver no Wi-Fi e outro no cabo do roteador,
+> ainda funciona, desde que seja o mesmo roteador.
 
-No PowerShell:
+### Passo 4 — Configurar o arquivo de rede
 
-```powershell
-javac -encoding UTF-8 -d out (Get-ChildItem -Recurse src -Filter *.java).FullName
+Na pasta do projeto existe dois arquivos modelo:
+- `config_maquina1_primario.properties`
+- `config_maquina2_replica.properties`
+
+**Na Máquina 1** (vai rodar o primário):
+1. Copie `config_maquina1_primario.properties` e renomeie para `config.properties`
+2. Abra o arquivo com o Bloco de Notas
+3. Substitua `192.168.1.10` pelo IP da Máquina 1
+4. Substitua `192.168.1.11` pelo IP da Máquina 2
+5. Salve
+
+**Na Máquina 2** (vai rodar a réplica):
+1. Copie `config_maquina2_replica.properties` e renomeie para `config.properties`
+2. Abra o arquivo com o Bloco de Notas
+3. Substitua `192.168.1.10` pelo IP da Máquina 1
+4. Substitua `192.168.1.11` pelo IP da Máquina 2
+5. Salve
+
+### Passo 5 — Compilar (em qualquer uma das máquinas)
+
+Abra o Prompt de Comando na pasta do projeto e execute:
+
+```
+compilar.bat
 ```
 
-No Git Bash:
+Se aparecer `COMPILACAO OK`, está pronto.
 
-```bash
-javac -encoding UTF-8 -d out $(find src -name "*.java")
+> Os arquivos compilados ficam na pasta `out`. Você pode compilar só numa
+> máquina e copiar a pasta `out` para a outra — não precisa compilar duas vezes.
+
+### Passo 6 — Rodar
+
+Abra um Prompt de Comando em cada máquina e vá para a pasta do projeto.
+
+**Na Máquina 2 — inicie a réplica PRIMEIRO:**
+```
+rodar_replica.bat
+```
+Aguarde aparecer: `SERVIDOR RÉPLICA INICIADO`
+
+**Na Máquina 1 — inicie o primário:**
+```
+rodar_primario.bat
+```
+Aguarde aparecer: `Heartbeat enviado para a réplica`
+
+Isso confirma que as duas máquinas estão se comunicando.
+
+**Em qualquer máquina (ou até de um celular no mesmo Wi-Fi):**
+```
+rodar_cliente.bat
 ```
 
-## Execução
+### Passo 7 — Acessar o painel web
 
-Abra três terminais na pasta do projeto.
+Para participar pelo navegador, acesse o servidor primário:
 
-1. Inicie a réplica:
-
-```bash
-java -cp out leilao.servidor.ServidorReplica
+```
+http://192.168.1.10:8080/
 ```
 
-2. Inicie o servidor primário:
+O caminho `/monitor` continua funcionando como atalho para a mesma tela.
+Substitua o IP pelo endereço real da máquina que estiver como primária.
 
-```bash
-java -cp out leilao.servidor.ServidorLeilao
+---
+
+## Demonstração do failover para a banca
+
+1. Certifique-se que as duas máquinas estão rodando e que o cliente está conectado
+2. Dê alguns lances para ter histórico visível
+3. Na Máquina 1 (primário), pressione `Ctrl+C` para derrubar o servidor
+4. Observe a Máquina 2: em até 6 segundos aparece `[FAILOVER] Réplica assumindo`
+5. O painel web da Máquina 2 muda de cor para vermelho e mostra os lances anteriores
+6. O cliente reconecta automaticamente em até 8 segundos
+7. Continue dando lances — tudo funciona como antes, agora atendido pela Máquina 2
+
+---
+
+## Portas usadas (para liberar no firewall se necessário)
+
+| Porta | Para quê |
+|-------|----------|
+| 5555  | Clientes TCP se conectam aqui |
+| 6000  | Canal de replicação entre servidores |
+| 8080  | Interface web no navegador |
+
+Se a conexão entre as máquinas não funcionar, pode ser o firewall do
+Windows bloqueando essas portas. Para liberar, abra o Prompt de Comando
+**como Administrador** e execute:
+
+```
+netsh advfirewall firewall add rule name="Leilao TCP" protocol=TCP dir=in localport=5555,6000,8080 action=allow
 ```
 
-3. Inicie o cliente:
+---
 
-```bash
-java -cp out leilao.cliente.ClienteLeilao
+## Estrutura de pastas
+
 ```
-
-## Comandos
-
-```text
-listar
-status <id>
-lance <id> <valor>
-historico <id>
-criarleilao <preco_inicial> <descricao>
-ajuda
-sair
+leilao-distribuido/
+├── leilao/
+│   ├── config/
+│   │   └── ConfiguracaoRede.java       ← IPs e portas
+│   ├── dominio/
+│   │   ├── RelogioLamport.java         ← Contador lógico
+│   │   ├── Lance.java                  ← Um lance
+│   │   ├── Leilao.java                 ← Um item leiloado
+│   │   └── GerenciadorLeiloes.java     ← Todos os leilões
+│   ├── persistencia/
+│   │   ├── RepositorioUsuarios.java    ← Cadastro com SHA-256
+│   │   └── LogDistribuido.java         ← Log com Lamport
+│   ├── servidor/
+│   │   ├── CoordenadorPrimario.java    ← Interface de replicação
+│   │   ├── RegistroClientes.java       ← Lista de clientes + broadcast
+│   │   ├── PainelMonitoramento.java    ← Interface web HTTP
+│   │   ├── TratadorCliente.java        ← Thread por cliente
+│   │   ├── ServidorLeilao.java         ← Servidor primário
+│   │   └── ServidorReplica.java        ← Servidor réplica / failover
+│   └── cliente/
+│       └── ClienteLeilao.java          ← Cliente de terminal
+├── out/                                ← Arquivos compilados (gerado pelo compilar.bat)
+├── config.properties                   ← Arquivo local ignorado pelo Git
+├── config_maquina1_primario.properties ← Modelo para a Máquina 1
+├── config_maquina2_replica.properties  ← Modelo para a Máquina 2
+├── compilar.bat                        ← Compila tudo
+├── rodar_primario.bat                  ← Inicia o servidor primário
+├── rodar_replica.bat                   ← Inicia o servidor réplica
+└── rodar_cliente.bat                   ← Inicia o cliente
 ```
-
-## Fluxo principal
-
-1. Ao conectar, o cliente informa nome e senha. Nome novo cadastra na hora;
-   nome já existente exige a senha cadastrada antes.
-2. Cada cliente autenticado é atendido por uma thread de `TratadorCliente`.
-3. `GerenciadorLeiloes.registrarLance()` ordena o processamento e avança
-   o relógio de Lamport.
-4. `Leilao.adicionarLance()` valida e altera atomicamente o leilão.
-5. O primário tenta replicar o estado antes de confirmar o lance ao cliente.
-6. O lance aceito é enviado por broadcast a todos os clientes conectados.
-7. Um cliente também pode criar novos leilões com `criarleilao`; o novo
-   estado é replicado e divulgado por broadcast.
-8. Ao conectar ou reconectar, o cliente recebe o estado e os últimos lances.
-9. O primário envia heartbeat a cada 2 segundos.
-10. Após 6 segundos sem sinal, a réplica assume a porta de clientes.
-11. Depois da promoção, a réplica também passa a replicar estado para um
-    novo secundário.
-12. Se o primário antigo voltar e a porta 5555 já estiver ocupada, ele não
-    tenta recuperar a liderança: ele inicia automaticamente como nova réplica.
-13. O cliente espera 8 segundos e tenta reconectar, reenviando nome e senha.
-14. Eventos relevantes (login, criação de leilões, lances, replicação, failover, encerramento)
-    são gravados com o timestamp de Lamport em `log_primario.txt` ou
-    `log_replica.txt`, dependendo de qual processo está ativo no momento.
-
-## Conceitos demonstrados
-
-- Sockets TCP entre processos com memórias separadas.
-- Uma thread dedicada por cliente.
-- `synchronized` para proteger seções críticas.
-- `ConcurrentHashMap` para acesso concorrente ao conjunto de leilões.
-- Registro concorrente de clientes e broadcast em tempo real.
-- Criação dinâmica de leilões e replicação do novo estado.
-- Relógio lógico de Lamport para ordenar lances.
-- Replicação completa de estado por serialização Java.
-- Heartbeat e detecção de falha por timeout.
-- Failover automático para a réplica sobrevivente.
-- Reintegração do servidor antigo como nova réplica após o retorno.
-- Anti-sniping com extensão de 30 segundos.
-- Cadastro e login persistidos em arquivo, com senha em hash SHA-256.
-- Log distribuído de eventos com timestamp de Lamport, um arquivo por
-  processo, para comparar a ordem de eventos entre réplicas.
-
-O failover é determinístico para dois servidores. Ele não implementa o protocolo
-completo do algoritmo Bully, pois não há mensagens de eleição nem disputa de IDs.
-A liderança fica com o processo que mantém a porta 5555. Se o antigo primário
-voltar enquanto a réplica promovida ainda estiver ativa, ele entra como
-secundário para evitar dois primários ao mesmo tempo.
-
-## Teste de failover com retorno do primário antigo
-
-1. Compile o projeto.
-2. Abra a réplica com `java -cp out leilao.servidor.ServidorReplica`.
-3. Abra o primário com `java -cp out leilao.servidor.ServidorLeilao`.
-4. Abra um cliente, faça login e execute `listar` ou envie um lance.
-5. Pare o terminal do primário original.
-6. Aguarde cerca de 6 segundos: a réplica deve assumir a porta 5555.
-7. O cliente deve reconectar depois de 8 segundos.
-8. Rode novamente `java -cp out leilao.servidor.ServidorLeilao`.
-9. Como a porta 5555 já está ocupada, esse processo deve iniciar como réplica.
-10. Faça outro lance ou crie um leilão: o novo primário deve replicar o estado
-    para essa réplica de retorno.
-
-## Persistência de usuários
-
-O arquivo `usuarios.txt` é compartilhado pelos dois processos (primário e
-réplica), pois ambos rodam na mesma pasta. Cada processo carrega esse
-arquivo apenas uma vez, no momento em que inicia. Por isso:
-
-- Um cadastro feito no primário só aparece para a réplica depois que ela
-  relê o arquivo. Isso acontece automaticamente no instante do failover
-  (`promoverParaPrimario()` chama `recarregarDoArquivo()`), e não antes.
-- Se o primário antigo cair e voltar enquanto a réplica promovida ainda está
-  ativa, ele entra como nova réplica e também relê o arquivo de usuários ao
-  iniciar.
-- Isto é uma simplificação aceitável para o MVP: não há sincronização de
-  usuários em tempo real entre os dois processos, só na borda do failover.
-
-## Log distribuído
-
-Cada processo grava em seu próprio arquivo (`log_primario.txt` ou
-`log_replica.txt`). Os eventos registrados incluem: início do servidor,
-login e cadastro de usuários, lances aceitos e recusados, confirmação de
-replicação de estado, recebimento de estado pela réplica, failover e
-encerramento de leilões — todos com o timestamp de Lamport correspondente.
-
-Para demonstrar consistência entre réplicas, abra os dois arquivos lado a
-lado depois de um teste com failover: os eventos replicados (como
-`LANCE_ACEITO` seguido de `REPLICACAO_RECEBIDA`) devem aparecer com o
-mesmo timestamp de Lamport nos dois lados.

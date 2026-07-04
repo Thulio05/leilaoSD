@@ -1,5 +1,6 @@
 package leilao.servidor;
 
+import leilao.config.ConfiguracaoRede;
 import leilao.dominio.GerenciadorLeiloes;
 import leilao.dominio.Lance;
 import leilao.dominio.Leilao;
@@ -17,9 +18,10 @@ import java.util.Set;
 /** Servidor primário: atende clientes, replica estado e envia heartbeat. */
 public class ServidorLeilao implements CoordenadorPrimario {
 
-    private static final int PORTA_CLIENTES = 5555;
-    private static final String ENDERECO_REPLICA = "localhost";
-    private static final int PORTA_REPLICACAO = 6000;
+    private static final ConfiguracaoRede CONFIGURACAO = ConfiguracaoRede.instancia();
+    private static final int PORTA_CLIENTES = CONFIGURACAO.obterPortaClientes();
+    private static final String ENDERECO_REPLICA = CONFIGURACAO.obterEnderecoReplica();
+    private static final int PORTA_REPLICACAO = CONFIGURACAO.obterPortaReplicacao();
     private static final long INTERVALO_HEARTBEAT_MS = 2_000;
     private static final String ARQUIVO_USUARIOS = "usuarios.txt";
     private static final String ARQUIVO_LOG = "log_primario.txt";
@@ -34,7 +36,14 @@ public class ServidorLeilao implements CoordenadorPrimario {
     private ObjectOutputStream saidaReplicacao;
 
     private final PainelMonitoramento painel =
-            new PainelMonitoramento(gerenciadorLeiloes, "SERVIDOR PRIMÁRIO");
+            new PainelMonitoramento(
+                    gerenciadorLeiloes,
+                    "SERVIDOR PRIMÁRIO",
+                    this,
+                    registroClientes,
+                    repositorioUsuarios,
+                    logDistribuido,
+                    () -> true);
 
     public void iniciar() {
         try {
@@ -181,7 +190,10 @@ public class ServidorLeilao implements CoordenadorPrimario {
         }
 
         try {
-            socketReplicacao = new Socket(ENDERECO_REPLICA, PORTA_REPLICACAO);
+            socketReplicacao = new Socket();
+            socketReplicacao.connect(
+                    new java.net.InetSocketAddress(ENDERECO_REPLICA, PORTA_REPLICACAO),
+                    CONFIGURACAO.obterTimeoutConexaoMs());
             saidaReplicacao = new ObjectOutputStream(socketReplicacao.getOutputStream());
 
             System.out.println("[INFO] Conectado à réplica em "
@@ -189,7 +201,8 @@ public class ServidorLeilao implements CoordenadorPrimario {
             return true;
         } catch (IOException erro) {
             fecharConexaoReplicacao();
-            System.out.println("[INFO] Réplica indisponível. Nova tentativa no próximo heartbeat.");
+            System.out.println("[INFO] Réplica indisponível (" + erro.getMessage()
+                    + "). Nova tentativa no próximo heartbeat.");
             return false;
         }
     }

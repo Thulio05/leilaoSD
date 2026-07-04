@@ -1,41 +1,28 @@
-# Arquivos compilados do Java
-*.class
-*.jar
-*.war
-*.ear
-
-# Pastas de compilação
-bin/
-build/
+# Saída de compilação Java
 out/
-target/
-.gradle/
+*.class
 
-# IDEs e editores
-.idea/
-.vscode/
-*.iml
-.classpath
-.project
-.settings/
+# Arquivos auxiliares gerados pela compilação
+sources.txt
 
-# Logs e arquivos temporários
-*.log
-*.tmp
-hs_err_pid*
-replay_pid*
-
-# Configurações locais e segredos
-.env
-.env.*
-!.env.example
-
-# Sistema operacional
-.DS_Store
-Thumbs.db
-desktop.ini
-
-# Arquivos gerados durante execução
+# Dados locais gerados em execução
 usuarios.txt
 log_primario.txt
 log_replica.txt
+*.log
+
+# Configuração real de cada máquina
+# Use os arquivos config_maquina*.properties como modelo.
+config.properties
+
+# Arquivos temporários do sistema e editores
+.DS_Store
+Thumbs.db
+desktop.ini
+*.tmp
+*.temp
+
+# IDEs
+.vscode/
+.idea/
+*.iml
