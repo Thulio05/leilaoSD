@@ -25,6 +25,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executors;
 import java.util.function.BooleanSupplier;
 
 /**
@@ -39,6 +40,7 @@ public class PainelMonitoramento {
     private static final int PORTA_HTTP = ConfiguracaoRede.instancia().obterPortaHttp();
     private static final String ROTA_INICIO = "/";
     private static final String ROTA_MONITOR = "/monitor";
+    private static final String ROTA_FRAGMENTO_LEILOES = "/fragmento-leiloes";
     private static final String ROTA_LOGIN = "/login";
     private static final String ROTA_LOGOUT = "/logout";
     private static final String ROTA_LANCE = "/lance";
@@ -93,7 +95,7 @@ public class PainelMonitoramento {
                     new InetSocketAddress(PORTA_HTTP), 0);
 
             httpServer.createContext(ROTA_INICIO, this::tratarRequisicao);
-            httpServer.setExecutor(null);
+            httpServer.setExecutor(Executors.newCachedThreadPool());
             httpServer.start();
 
             System.out.println("[PAINEL] Interface web iniciada em http://localhost:"
@@ -117,6 +119,11 @@ public class PainelMonitoramento {
             if ("GET".equalsIgnoreCase(metodo)
                     && (ROTA_INICIO.equals(caminho) || ROTA_MONITOR.equals(caminho))) {
                 responderHtml(troca, construirPaginaHtml(troca, obterMensagemDaUrl(troca)));
+                return;
+            }
+
+            if ("GET".equalsIgnoreCase(metodo) && ROTA_FRAGMENTO_LEILOES.equals(caminho)) {
+                responderHtml(troca, construirListaLeiloesHtml(troca));
                 return;
             }
 
@@ -224,11 +231,11 @@ public class PainelMonitoramento {
                 return;
             }
 
-            coordenadorPrimario.replicarAposLanceAceito(idLeilao, resultado.lance);
             logDistribuido.registrar(resultado.lance.obterTimestampLamport(),
                     "LANCE_ACEITO_WEB leilao=" + idLeilao
                             + " usuario=" + usuario
                             + " valor=" + valor);
+            replicarLanceEmSegundoPlano(idLeilao, resultado.lance);
 
             String mensagemGlobal = "[WEB] Leilão #" + idLeilao
                     + ": novo lance de " + usuario + " no valor de R$ "
@@ -275,13 +282,12 @@ public class PainelMonitoramento {
                 return;
             }
 
-            coordenadorPrimario.replicarAposLeilaoCriado(
-                    resultado.leilao, resultado.timestampLamport);
             logDistribuido.registrar(resultado.timestampLamport,
                     "LEILAO_CRIADO_WEB leilao=" + resultado.leilao.obterId()
                             + " usuario=" + usuario
                             + " precoInicial=" + precoInicial
                             + " item=\"" + descricao + "\"");
+            replicarCriacaoEmSegundoPlano(resultado.leilao, resultado.timestampLamport);
 
             String mensagemGlobal = "[WEB] Novo leilão #"
                     + resultado.leilao.obterId()
@@ -294,6 +300,22 @@ public class PainelMonitoramento {
             redirecionar(troca, "/?msg="
                     + codificarUrl("Informe um preço inicial válido."));
         }
+    }
+
+    private void replicarLanceEmSegundoPlano(int idLeilao, Lance lance) {
+        Thread thread = new Thread(
+                () -> coordenadorPrimario.replicarAposLanceAceito(idLeilao, lance),
+                "Thread-Replicacao-Web-Lance-" + idLeilao);
+        thread.setDaemon(true);
+        thread.start();
+    }
+
+    private void replicarCriacaoEmSegundoPlano(Leilao leilao, long timestampLamport) {
+        Thread thread = new Thread(
+                () -> coordenadorPrimario.replicarAposLeilaoCriado(leilao, timestampLamport),
+                "Thread-Replicacao-Web-Leilao-" + leilao.obterId());
+        thread.setDaemon(true);
+        thread.start();
     }
 
     private String construirPaginaHtml(HttpExchange troca, String mensagem) {
@@ -341,6 +363,7 @@ public class PainelMonitoramento {
         html.append("<footer>");
         html.append("Sistema de Leilão Distribuído • Sockets TCP, HTTP, Lamport, replicação e failover");
         html.append("</footer>");
+        adicionarJavascript(html);
         html.append("</body></html>");
 
         return html.toString();
@@ -351,13 +374,13 @@ public class PainelMonitoramento {
         html.append("<div>");
         html.append("<span class='etiqueta'>Sistemas Distribuídos</span>");
         html.append("<h1>Leilão Online</h1>");
-        html.append("<p>Participe dos leilões pelo navegador. Atualize a página para ver novos lances.</p>");
+        html.append("<p>Participe dos leilões pelo navegador. A tela atualiza sozinha.</p>");
         html.append("</div>");
         html.append("<div class='status-servidor'>");
         html.append("<strong>").append(escaparHtml(papelAtual)).append("</strong>");
         html.append("<span>").append(escaparHtml(statusServidor)).append("</span>");
         html.append("<small>Lamport: ").append(gerenciadorLeiloes.obterLamportAtual())
-                .append(" • ").append(horaAtual).append("</small>");
+                .append(" • <span id='hora-navegador'>").append(horaAtual).append("</span></small>");
         html.append("</div>");
         html.append("</header>");
     }
@@ -375,7 +398,7 @@ public class PainelMonitoramento {
             html.append("<h2>Entrar ou cadastrar</h2>");
             html.append("<p>Se o usuário não existir, ele será cadastrado automaticamente.</p>");
             html.append("</div>");
-            html.append("<form method='post' action='/login' class='form-inline'>");
+            html.append("<form method='post' action='/login' class='form-inline' data-ajax='true'>");
             html.append("<input name='usuario' placeholder='Usuário' required>");
             html.append("<input name='senha' type='password' placeholder='Senha' required>");
             html.append("<button type='submit'>Entrar</button>");
@@ -385,7 +408,7 @@ public class PainelMonitoramento {
             html.append("<h2>Olá, ").append(escaparHtml(usuario)).append("</h2>");
             html.append("<p>Você pode criar leilões e enviar lances pela interface web.</p>");
             html.append("</div>");
-            html.append("<form method='post' action='/logout'>");
+            html.append("<form method='post' action='/logout' data-ajax='true'>");
             html.append("<button class='secundario' type='submit'>Sair</button>");
             html.append("</form>");
         }
@@ -399,7 +422,7 @@ public class PainelMonitoramento {
         html.append("<h2>Criar novo leilão</h2>");
         html.append("<p>O novo leilão será replicado para o servidor secundário.</p>");
         html.append("</div>");
-        html.append("<form method='post' action='/criar-leilao' class='form-grid'>");
+        html.append("<form method='post' action='/criar-leilao' class='form-grid' data-ajax='true'>");
         html.append("<label>Descrição do item");
         html.append("<input name='descricao' placeholder='Ex: PlayStation 5' required>");
         html.append("</label>");
@@ -411,11 +434,19 @@ public class PainelMonitoramento {
         html.append("</section>");
     }
 
+    private String construirListaLeiloesHtml(HttpExchange troca) {
+        String usuario = obterUsuarioLogado(troca);
+        boolean podeComandar = servidorAceitaComandos();
+        StringBuilder html = new StringBuilder();
+        construirListaLeiloes(html, usuario, podeComandar);
+        return html.toString();
+    }
+
     private void construirListaLeiloes(StringBuilder html, String usuario, boolean podeComandar) {
         List<Leilao> leiloes = new ArrayList<>(gerenciadorLeiloes.obterTodosLeiloes().values());
         leiloes.sort(Comparator.comparingInt(Leilao::obterId));
 
-        html.append("<section>");
+        html.append("<section id='area-leiloes'>");
         html.append("<div class='titulo-secao'>");
         html.append("<h2>Leilões disponíveis</h2>");
         html.append("<p>").append(leiloes.size()).append(" item(ns) encontrados.</p>");
@@ -439,13 +470,14 @@ public class PainelMonitoramento {
             StringBuilder html, Leilao leilao, String usuario, boolean podeComandar) {
 
         boolean ativo = leilao.estaAtivo();
+        long tempoRestante = leilao.obterTempoRestanteSegundos();
         String vencedorAtual = leilao.obterVencedorAtual();
         List<Lance> historico = leilao.obterHistoricoLances();
         String lamportUltimoLance = historico.isEmpty()
                 ? "—"
                 : String.valueOf(historico.get(historico.size() - 1).obterTimestampLamport());
 
-        html.append("<article class='card'>");
+        html.append("<article class='card' data-leilao-id='").append(leilao.obterId()).append("'>");
         html.append("<div class='card-topo'>");
         html.append("<span class='id'>#").append(leilao.obterId()).append("</span>");
         html.append("<span class='badge ").append(ativo ? "ativo" : "encerrado").append("'>")
@@ -460,15 +492,17 @@ public class PainelMonitoramento {
         html.append("<div><dt>Vencedor atual</dt><dd>")
                 .append(vencedorAtual != null ? escaparHtml(vencedorAtual) : "Nenhum")
                 .append("</dd></div>");
-        html.append("<div><dt>Tempo restante</dt><dd>")
-                .append(ativo ? leilao.obterTempoRestanteSegundos() + "s" : "Encerrado")
+        html.append("<div><dt>Tempo restante</dt><dd class='tempo-restante' data-segundos='")
+                .append(ativo ? tempoRestante : 0)
+                .append("'>")
+                .append(ativo ? tempoRestante + "s" : "Encerrado")
                 .append("</dd></div>");
         html.append("<div><dt>Lamport último lance</dt><dd>")
                 .append(lamportUltimoLance).append("</dd></div>");
         html.append("</dl>");
 
         if (ativo && usuario != null && podeComandar) {
-            html.append("<form method='post' action='/lance' class='lance-form'>");
+            html.append("<form method='post' action='/lance' class='lance-form' data-ajax='true'>");
             html.append("<input type='hidden' name='idLeilao' value='").append(leilao.obterId()).append("'>");
             html.append("<input name='valor' type='number' step='0.01' min='0.01' placeholder='Seu lance' required>");
             html.append("<button type='submit'>Dar lance</button>");
@@ -531,6 +565,7 @@ public class PainelMonitoramento {
         html.append(".form-grid label { display: grid; gap: 6px; flex: 1 1 240px; font-size: .9rem; font-weight: 700; color: #52606d; }");
         html.append("input { border: 1px solid #cbd5e1; border-radius: 12px; padding: 12px 13px; min-width: 160px; font: inherit; background: #fff; }");
         html.append("button { border: 0; border-radius: 12px; padding: 12px 16px; font: inherit; font-weight: 700; cursor: pointer; color: white; background: var(--primaria); }");
+        html.append("button:disabled { cursor: wait; opacity: .7; }");
         html.append("button.secundario { background: #52606d; }");
         html.append(".grade-leiloes { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 18px; }");
         html.append(".card { padding: 18px; display: flex; flex-direction: column; gap: 10px; }");
@@ -552,6 +587,106 @@ public class PainelMonitoramento {
         html.append(".vazio { padding: 28px; text-align: center; color: #62748a; }");
         html.append("footer { text-align: center; color: #7b8794; padding: 24px; font-size: .9rem; }");
         html.append("@media (max-width: 640px) { .form-inline input, .form-inline button, .form-grid button, .lance-form button { width: 100%; } }");
+    }
+
+    private void adicionarJavascript(StringBuilder html) {
+        html.append("""
+                <script>
+                (() => {
+                    function atualizarRelogioLocal() {
+                        const elemento = document.getElementById('hora-navegador');
+                        if (!elemento) {
+                            return;
+                        }
+                        elemento.textContent = new Date().toLocaleString('pt-BR');
+                    }
+
+                    function atualizarCronometros() {
+                        document.querySelectorAll('.tempo-restante[data-segundos]').forEach((elemento) => {
+                            let segundos = Number.parseInt(elemento.dataset.segundos || '0', 10);
+                            if (Number.isNaN(segundos)) {
+                                return;
+                            }
+
+                            if (segundos > 0) {
+                                elemento.textContent = segundos + 's';
+                                elemento.dataset.segundos = String(segundos - 1);
+                                return;
+                            }
+
+                            elemento.textContent = 'Encerrado';
+                        });
+                    }
+
+                    async function atualizarLeiloes() {
+                        const area = document.getElementById('area-leiloes');
+                        if (!area || document.hidden) {
+                            return;
+                        }
+
+                        const elementoAtivo = document.activeElement;
+                        if (elementoAtivo && area.contains(elementoAtivo)
+                                && ['INPUT', 'BUTTON'].includes(elementoAtivo.tagName)) {
+                            return;
+                        }
+
+                        try {
+                            const resposta = await fetch('/fragmento-leiloes', { cache: 'no-store' });
+                            if (resposta.ok) {
+                                area.outerHTML = await resposta.text();
+                            }
+                        } catch (erro) {
+                            console.warn('Não foi possível atualizar os leilões agora.', erro);
+                        }
+                    }
+
+                    function configurarFormulariosAjax() {
+                        document.addEventListener('submit', async (evento) => {
+                            const formulario = evento.target;
+                            if (!formulario.matches('form[data-ajax="true"]')) {
+                                return;
+                            }
+
+                            evento.preventDefault();
+
+                            const botao = formulario.querySelector('button[type="submit"]');
+                            const textoOriginal = botao ? botao.textContent : '';
+                            if (botao) {
+                                botao.disabled = true;
+                                botao.textContent = 'Enviando...';
+                            }
+
+                            try {
+                                const corpo = new URLSearchParams(new FormData(formulario));
+                                const resposta = await fetch(formulario.action, {
+                                    method: 'POST',
+                                    body: corpo,
+                                    credentials: 'same-origin',
+                                    headers: {
+                                        'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8'
+                                    }
+                                });
+
+                                window.location.href = resposta.url || '/';
+                            } catch (erro) {
+                                alert('Não foi possível enviar a ação agora. Tente novamente.');
+                                if (botao) {
+                                    botao.disabled = false;
+                                    botao.textContent = textoOriginal;
+                                }
+                            }
+                        });
+                    }
+
+                    atualizarRelogioLocal();
+                    atualizarCronometros();
+                    configurarFormulariosAjax();
+                    window.setInterval(atualizarRelogioLocal, 1000);
+                    window.setInterval(atualizarCronometros, 1000);
+                    window.setInterval(atualizarLeiloes, 2000);
+                })();
+                </script>
+                """);
     }
 
     private boolean servidorAceitaComandos() {
