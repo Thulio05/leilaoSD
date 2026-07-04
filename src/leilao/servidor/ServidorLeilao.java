@@ -36,7 +36,14 @@ public class ServidorLeilao implements CoordenadorPrimario {
     private ObjectOutputStream saidaReplicacao;
 
     private final PainelMonitoramento painel =
-            new PainelMonitoramento(gerenciadorLeiloes, "SERVIDOR PRIMÁRIO");
+            new PainelMonitoramento(
+                    gerenciadorLeiloes,
+                    "SERVIDOR PRIMÁRIO",
+                    this,
+                    registroClientes,
+                    repositorioUsuarios,
+                    logDistribuido,
+                    () -> true);
 
     public void iniciar() {
         try {

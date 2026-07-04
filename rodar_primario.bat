@@ -15,7 +15,7 @@ REM    Qualquer maquina: rodar_cliente.bat
 REM ================================================================
 
 echo Iniciando Servidor Primario...
-echo Painel web disponivel em: http://localhost:8080/monitor
+echo Interface web disponivel em: http://localhost:8080/
 echo.
 echo Para encerrar: pressione Ctrl+C
 echo.

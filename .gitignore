@@ -1,0 +1,28 @@
+# Saída de compilação Java
+out/
+*.class
+
+# Arquivos auxiliares gerados pela compilação
+sources.txt
+
+# Dados locais gerados em execução
+usuarios.txt
+log_primario.txt
+log_replica.txt
+*.log
+
+# Configuração real de cada máquina
+# Use os arquivos config_maquina*.properties como modelo.
+config.properties
+
+# Arquivos temporários do sistema e editores
+.DS_Store
+Thumbs.db
+desktop.ini
+*.tmp
+*.temp
+
+# IDEs
+.vscode/
+.idea/
+*.iml

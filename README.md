@@ -113,14 +113,15 @@ clientes conectados e envia a mensagem a cada um.
 **`leilao/servidor/PainelMonitoramento.java`**
 Sobe um mini servidor HTTP na porta 8080 usando apenas bibliotecas do
 próprio Java (sem instalar nada extra). Qualquer navegador na rede pode
-acessar `http://<IP>:8080/monitor` e ver os leilões em tempo real.
+acessar `http://<IP>:8080/` para ver os leilões, autenticar usuário,
+criar novos leilões e enviar lances.
 
-A página usa `<meta http-equiv="refresh" content="2">` para recarregar
-sozinha a cada 2 segundos, sem precisar de JavaScript.
+As ações da interface web só ficam habilitadas no servidor que está
+atuando como primário. Na réplica passiva, a página fica em modo leitura
+para evitar que dois servidores aceitem alterações ao mesmo tempo.
 
 Método `atualizarPapel(texto)` — chamado no momento do failover para
-mudar o texto e a cor da página de verde (primário) para vermelho
-(secundário que assumiu).
+mudar o texto da página e habilitar as ações no novo primário.
 
 ---
 
@@ -160,7 +161,8 @@ mais de 6 segundos sem nenhum sinal do primário. Se sim, chama
 `promoverParaPrimario()`, que:
 1. Assume a porta 5555 e começa a atender clientes
 2. Muda a cor do painel web para vermelho
-3. Relê o arquivo de usuários para pegar cadastros novos feitos pelo primário
+3. Habilita login, criação de leilão e lances pela interface web
+4. Relê o arquivo de usuários para pegar cadastros novos feitos pelo primário
 
 ---
 
@@ -263,14 +265,14 @@ rodar_cliente.bat
 
 ### Passo 7 — Acessar o painel web
 
-Em qualquer navegador na mesma rede, acesse:
+Para participar pelo navegador, acesse o servidor primário:
 
 ```
-http://192.168.1.10:8080/monitor   (painel do primário)
-http://192.168.1.11:8080/monitor   (painel da réplica)
+http://192.168.1.10:8080/
 ```
 
-(Substitua pelos IPs reais.)
+O caminho `/monitor` continua funcionando como atalho para a mesma tela.
+Substitua o IP pelo endereço real da máquina que estiver como primária.
 
 ---
 
@@ -292,7 +294,7 @@ http://192.168.1.11:8080/monitor   (painel da réplica)
 |-------|----------|
 | 5555  | Clientes TCP se conectam aqui |
 | 6000  | Canal de replicação entre servidores |
-| 8080  | Painel web (navegador) |
+| 8080  | Interface web no navegador |
 
 Se a conexão entre as máquinas não funcionar, pode ser o firewall do
 Windows bloqueando essas portas. Para liberar, abra o Prompt de Comando
@@ -322,14 +324,14 @@ leilao-distribuido/
 │   ├── servidor/
 │   │   ├── CoordenadorPrimario.java    ← Interface de replicação
 │   │   ├── RegistroClientes.java       ← Lista de clientes + broadcast
-│   │   ├── PainelMonitoramento.java    ← Painel web HTTP
+│   │   ├── PainelMonitoramento.java    ← Interface web HTTP
 │   │   ├── TratadorCliente.java        ← Thread por cliente
 │   │   ├── ServidorLeilao.java         ← Servidor primário
 │   │   └── ServidorReplica.java        ← Servidor réplica / failover
 │   └── cliente/
 │       └── ClienteLeilao.java          ← Cliente de terminal
 ├── out/                                ← Arquivos compilados (gerado pelo compilar.bat)
-├── config.properties                   ← EDITE COM OS IPs REAIS
+├── config.properties                   ← Arquivo local ignorado pelo Git
 ├── config_maquina1_primario.properties ← Modelo para a Máquina 1
 ├── config_maquina2_replica.properties  ← Modelo para a Máquina 2
 ├── compilar.bat                        ← Compila tudo

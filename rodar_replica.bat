@@ -12,7 +12,7 @@ REM  Este processo deve ser iniciado ANTES do primario.
 REM ================================================================
 
 echo Iniciando Servidor Replica...
-echo Painel web disponivel em: http://localhost:8080/monitor
+echo Interface web disponivel em: http://localhost:8080/
 echo.
 echo Para encerrar: pressione Ctrl+C
 echo.

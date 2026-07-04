@@ -1,2 +1,0 @@
-[Lamport=3     | 23:37:24] REPLICACAO_RECEBIDA
-[Lamport=10    | 23:37:41] FAILOVER replica_assumiu_controle

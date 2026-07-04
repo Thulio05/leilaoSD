@@ -45,7 +45,14 @@ public class ServidorReplica implements CoordenadorPrimario {
     private ObjectOutputStream saidaReplicaRetorno;
 
     private final PainelMonitoramento painel =
-            new PainelMonitoramento(gerenciadorLeiloes, "SERVIDOR SECUNDÁRIO");
+            new PainelMonitoramento(
+                    gerenciadorLeiloes,
+                    "SERVIDOR SECUNDÁRIO",
+                    this,
+                    registroClientes,
+                    repositorioUsuarios,
+                    logDistribuido,
+                    () -> assumiuControle);
 
     public void iniciar() {
         System.out.println("==================================================");
