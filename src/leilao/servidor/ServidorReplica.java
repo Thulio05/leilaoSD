@@ -1,12 +1,5 @@
 package leilao.servidor;
 
-import leilao.config.ConfiguracaoRede;
-import leilao.dominio.GerenciadorLeiloes;
-import leilao.dominio.Lance;
-import leilao.dominio.Leilao;
-import leilao.persistencia.LogDistribuido;
-import leilao.persistencia.RepositorioUsuarios;
-
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
@@ -14,6 +7,12 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.HashSet;
 import java.util.Set;
+import leilao.config.ConfiguracaoRede;
+import leilao.dominio.GerenciadorLeiloes;
+import leilao.dominio.Lance;
+import leilao.dominio.Leilao;
+import leilao.persistencia.LogDistribuido;
+import leilao.persistencia.RepositorioUsuarios;
 
 /**
  * Réplica passiva do servidor. Recebe estado e heartbeat e assume o
@@ -172,6 +171,11 @@ public class ServidorReplica implements CoordenadorPrimario {
 private synchronized void promoverParaPrimario() {
     if (assumiuControle) return;
     assumiuControle = true;
+
+    long tempoParadoMs = System.currentTimeMillis() - ultimoSinalRecebidoEm;
+    System.out.println("[FAILOVER] Tempo de failover detectado: " + tempoParadoMs + " ms.");
+    gerenciadorLeiloes.pausarCronometrosPorFailover(tempoParadoMs);
+
     encerrarConexaoComPrimario();
 
     System.out.println("[FAILOVER] Réplica assumindo como novo servidor primário.");

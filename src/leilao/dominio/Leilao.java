@@ -63,6 +63,12 @@ public class Leilao implements Serializable {
         return ResultadoLance.aceito(novoLance, cronometroEstendido);
     }
 
+    public synchronized void adiarEncerramento(long milissegundosParaAdiar) {
+        if (ativo && milissegundosParaAdiar > 0) {
+            horarioEncerramentoMs += milissegundosParaAdiar;
+        }
+    }
+
     private void atualizarStatusSeExpirou() {
         if (ativo && System.currentTimeMillis() > horarioEncerramentoMs) {
             ativo = false;

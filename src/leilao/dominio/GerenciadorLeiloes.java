@@ -147,6 +147,16 @@ public class GerenciadorLeiloes {
         relogioLamport.sincronizarRecebimento(timestampRecebido);
     }
 
+    public void pausarCronometrosPorFailover(long milissegundosParados) {
+        if (milissegundosParados <= 0) {
+            return;
+        }
+
+        for (Leilao leilao : leiloes.values()) {
+            leilao.adiarEncerramento(milissegundosParados);
+        }
+    }
+
     public synchronized EstadoReplicado criarEstadoReplicado() {
         return new EstadoReplicado(
                 new HashMap<>(leiloes), proximoId, relogioLamport.obterValorAtual());
