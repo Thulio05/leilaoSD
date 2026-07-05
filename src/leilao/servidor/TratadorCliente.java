@@ -1,16 +1,15 @@
 package leilao.servidor;
 
-import leilao.dominio.GerenciadorLeiloes;
-import leilao.dominio.Leilao;
-import leilao.persistencia.LogDistribuido;
-import leilao.persistencia.RepositorioUsuarios;
-
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
-import java.net.SocketTimeoutException;
 import java.net.Socket;
+import java.net.SocketTimeoutException;
+import leilao.dominio.GerenciadorLeiloes;
+import leilao.dominio.Leilao;
+import leilao.persistencia.LogDistribuido;
+import leilao.persistencia.RepositorioUsuarios;
 
 /** Atende um cliente em uma thread dedicada. */
 public class TratadorCliente implements Runnable {
