@@ -9,10 +9,13 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
+import java.net.SocketTimeoutException;
 import java.net.Socket;
 
 /** Atende um cliente em uma thread dedicada. */
 public class TratadorCliente implements Runnable {
+
+    private static final int TIMEOUT_INATIVIDADE_MS = 60_000;
 
     private final Socket socket;
     private final GerenciadorLeiloes gerenciadorLeiloes;
@@ -43,6 +46,7 @@ public class TratadorCliente implements Runnable {
     @Override
     public void run() {
         try {
+            socket.setSoTimeout(TIMEOUT_INATIVIDADE_MS);
             entrada = new BufferedReader(new InputStreamReader(socket.getInputStream()));
             saida = new PrintWriter(socket.getOutputStream(), true);
             registroClientes.adicionar(this);
@@ -59,6 +63,10 @@ public class TratadorCliente implements Runnable {
             while (!encerramentoSolicitado && (comando = entrada.readLine()) != null) {
                 processarComando(comando.trim());
             }
+        } catch (SocketTimeoutException erro) {
+            System.out.println("[ALERTA] Cliente '" + nomeCliente
+                    + "' ficou inativo por tempo demais. Encerrando conexão.");
+            enviarMensagem("[ALERTA] Conexão encerrada por inatividade. Reconecte para continuar.");
         } catch (IOException erro) {
             System.out.println("[ALERTA] Conexão perdida com o cliente '"
                     + nomeCliente + "': " + erro.getMessage());
