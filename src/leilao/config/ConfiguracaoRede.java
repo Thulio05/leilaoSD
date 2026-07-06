@@ -109,6 +109,14 @@ public final class ConfiguracaoRede {
         return obterNumero("porta.http", 8080);
     }
 
+    public int obterPortaDiscovery() {
+        return obterNumero("porta.discovery", 5354);
+    }
+
+    public int obterPortaGatewayWeb() {
+        return obterNumero("porta.gateway.web", 8088);
+    }
+
     // ---- Tolerância a falha de rede ----
 
     /**
@@ -120,5 +128,9 @@ public final class ConfiguracaoRede {
      */
     public int obterTimeoutConexaoMs() {
         return obterNumero("rede.timeout.conexao.ms", 3_000);
+    }
+
+    public int obterTimeoutDiscoveryMs() {
+        return obterNumero("rede.timeout.discovery.ms", 5_000);
     }
 }

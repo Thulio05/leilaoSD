@@ -175,6 +175,12 @@ a réplica. Usa duas threads:
 Se a conexão cair, tenta reconectar automaticamente a cada 8 segundos
 (tempo suficiente para o failover terminar no servidor).
 
+**`leilao/cliente/GatewayWebLocal.java`**
+Gateway HTTP local para clientes web. O usuário abre `http://localhost:8088`
+no próprio computador; o gateway descobre automaticamente o servidor primário
+na rede e encaminha as requisições para o painel real. Isso evita digitar o IP
+da máquina servidora no navegador.
+
 ---
 
 ## Como rodar em duas máquinas
@@ -272,6 +278,27 @@ http://192.168.1.11:8080/monitor   (painel da réplica)
 
 (Substitua pelos IPs reais.)
 
+### Opção recomendada para clientes web: gateway local
+
+Em cada computador cliente que vai usar navegador, rode:
+
+```
+rodar_gateway_web.bat
+```
+
+Depois abra no navegador desse mesmo computador:
+
+```
+http://localhost:8088
+```
+
+Nesse caso, `localhost` aponta para o gateway local do cliente, não para o
+servidor do leilão. O gateway faz discovery por UDP, encontra o primário ativo
+na rede e encaminha as requisições HTTP automaticamente.
+
+Se o primário cair e a réplica assumir, o gateway tenta descobrir o novo
+primário e volta a encaminhar as requisições sem o usuário precisar saber IP.
+
 ---
 
 ## Demonstração do failover para a banca
@@ -293,13 +320,16 @@ http://192.168.1.11:8080/monitor   (painel da réplica)
 | 5555  | Clientes TCP se conectam aqui |
 | 6000  | Canal de replicação entre servidores |
 | 8080  | Painel web (navegador) |
+| 5354/UDP | Discovery automático de servidores |
+| 8088  | Gateway web local no computador cliente |
 
 Se a conexão entre as máquinas não funcionar, pode ser o firewall do
 Windows bloqueando essas portas. Para liberar, abra o Prompt de Comando
 **como Administrador** e execute:
 
 ```
-netsh advfirewall firewall add rule name="Leilao TCP" protocol=TCP dir=in localport=5555,6000,8080 action=allow
+netsh advfirewall firewall add rule name="Leilao TCP" protocol=TCP dir=in localport=5555,6000,8080,8088 action=allow
+netsh advfirewall firewall add rule name="Leilao Discovery UDP" protocol=UDP dir=in localport=5354 action=allow
 ```
 
 ---
@@ -327,7 +357,8 @@ leilao-distribuido/
 │   │   ├── ServidorLeilao.java         ← Servidor primário
 │   │   └── ServidorReplica.java        ← Servidor réplica / failover
 │   └── cliente/
-│       └── ClienteLeilao.java          ← Cliente de terminal
+│       ├── ClienteLeilao.java          ← Cliente de terminal
+│       └── GatewayWebLocal.java        ← Gateway local para navegador
 ├── out/                                ← Arquivos compilados (gerado pelo compilar.bat)
 ├── config.properties                   ← EDITE COM OS IPs REAIS
 ├── config_maquina1_primario.properties ← Modelo para a Máquina 1
@@ -335,5 +366,6 @@ leilao-distribuido/
 ├── compilar.bat                        ← Compila tudo
 ├── rodar_primario.bat                  ← Inicia o servidor primário
 ├── rodar_replica.bat                   ← Inicia o servidor réplica
-└── rodar_cliente.bat                   ← Inicia o cliente
+├── rodar_cliente.bat                   ← Inicia o cliente
+└── rodar_gateway_web.bat               ← Inicia o gateway web local
 ```

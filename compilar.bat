@@ -18,6 +18,7 @@ if %errorlevel% == 0 (
     echo   Para o servidor primario:  rodar_primario.bat
     echo   Para o servidor replica:   rodar_replica.bat
     echo   Para o cliente:            rodar_cliente.bat
+    echo   Para o navegador cliente:  rodar_gateway_web.bat
     echo.
 ) else (
     echo.

@@ -3,37 +3,31 @@ package leilao.config;
 import java.io.IOException;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
+import java.net.Inet4Address;
 import java.net.InetAddress;
+import java.net.InterfaceAddress;
+import java.net.NetworkInterface;
 import java.net.SocketTimeoutException;
 import java.nio.charset.StandardCharsets;
+import java.util.Enumeration;
+import java.util.LinkedHashSet;
+import java.util.Set;
 
 /**
  * Descoberta automática de serviços na rede local via broadcast UDP.
  *
- * Usa broadcast (255.255.255.255) em vez de multicast porque muitos
- * roteadores domésticos e redes de faculdade bloqueiam tráfego multicast
- * entre dispositivos, mas broadcast funciona em praticamente qualquer rede.
- *
- * Cada processo anuncia quem é a cada 2s. Os outros escutam e descobrem
- * o IP automaticamente — sem precisar editar config.properties.
- *
- * Formato das mensagens (separadas por '|'):
- *
- *   Anúncio do primário:
- *     LEILAO_PRIMARIO|<porta-clientes>|<porta-http>
- *
- *   Anúncio da réplica:
- *     LEILAO_REPLICA|<porta-replicacao>
+ * O objetivo é evitar que clientes precisem digitar o IP da máquina do
+ * servidor. O primário e a réplica anunciam suas portas na rede; clientes e
+ * gateways escutam esses anúncios e descobrem o endereço real automaticamente.
  */
 public class DiscoveryMdns {
 
-    public static final int    PORTA_DISCOVERY   = 5354;  // porta própria, evita conflito com mDNS
-    public static final String PREFIXO_PRIMARIO  = "LEILAO_PRIMARIO";
-    public static final String PREFIXO_REPLICA   = "LEILAO_REPLICA";
+    public static final String PREFIXO_PRIMARIO = "LEILAO_PRIMARIO";
+    public static final String PREFIXO_REPLICA = "LEILAO_REPLICA";
 
-    private static final int   TIMEOUT_DESCOBERTA_MS = 5_000;
-    private static final long  INTERVALO_ANUNCIO_MS  = 2_000;
-    private static final int   TAMANHO_BUFFER        = 256;
+    private static final ConfiguracaoRede CONFIGURACAO = ConfiguracaoRede.instancia();
+    private static final long INTERVALO_ANUNCIO_MS = 2_000;
+    private static final int TAMANHO_BUFFER = 256;
 
     /** Resultado de descoberta do primário. */
     public static class ServidorEncontrado {
@@ -45,6 +39,10 @@ public class DiscoveryMdns {
             this.ip = ip;
             this.portaClientes = portaClientes;
             this.portaHttp = portaHttp;
+        }
+
+        public String obterUrlHttp() {
+            return "http://" + ip + ":" + portaHttp;
         }
     }
 
@@ -64,8 +62,10 @@ public class DiscoveryMdns {
         String mensagem = PREFIXO_PRIMARIO + "|" + portaClientes + "|" + portaHttp;
         iniciarAnuncioPeriodico(mensagem, "Thread-Discovery-Primario");
 
-        System.out.println("[Discovery] Anunciando como primário via broadcast na rede.");
-        System.out.println("[Discovery] Browsers podem acessar: http://<IP-desta-maquina>:"
+        System.out.println("[Discovery] Anunciando como primário via UDP broadcast "
+                + "na porta " + CONFIGURACAO.obterPortaDiscovery() + ".");
+        System.out.println("[Discovery] Gateway local dos clientes pode acessar este painel sem IP.");
+        System.out.println("[Discovery] Acesso direto na rede: http://<IP-desta-maquina>:"
                 + portaHttp + "/monitor");
     }
 
@@ -74,8 +74,8 @@ public class DiscoveryMdns {
         String mensagem = PREFIXO_REPLICA + "|" + portaReplicacao;
         iniciarAnuncioPeriodico(mensagem, "Thread-Discovery-Replica");
 
-        System.out.println("[Discovery] Anunciando como réplica via broadcast (porta "
-                + portaReplicacao + ").");
+        System.out.println("[Discovery] Anunciando como réplica via UDP broadcast "
+                + "na porta " + CONFIGURACAO.obterPortaDiscovery() + ".");
     }
 
     private static void iniciarAnuncioPeriodico(String mensagem, String nomeThread) {
@@ -84,18 +84,24 @@ public class DiscoveryMdns {
         Thread thread = new Thread(() -> {
             try (DatagramSocket socket = new DatagramSocket()) {
                 socket.setBroadcast(true);
-                InetAddress broadcast = InetAddress.getByName("255.255.255.255");
-                DatagramPacket pacote =
-                        new DatagramPacket(bytes, bytes.length, broadcast, PORTA_DISCOVERY);
 
                 while (!Thread.currentThread().isInterrupted()) {
-                    socket.send(pacote);
+                    for (InetAddress enderecoBroadcast : listarEnderecosBroadcast()) {
+                        DatagramPacket pacote = new DatagramPacket(
+                                bytes,
+                                bytes.length,
+                                enderecoBroadcast,
+                                CONFIGURACAO.obterPortaDiscovery());
+                        socket.send(pacote);
+                    }
+
                     Thread.sleep(INTERVALO_ANUNCIO_MS);
                 }
             } catch (IOException | InterruptedException erro) {
                 if (!(erro instanceof InterruptedException)) {
                     System.out.println("[Discovery] Erro no anúncio: " + erro.getMessage());
                 }
+                Thread.currentThread().interrupt();
             }
         }, nomeThread);
 
@@ -106,36 +112,40 @@ public class DiscoveryMdns {
     /** Procura o primário na rede via broadcast. */
     public static ServidorEncontrado descobrirPrimario() {
         System.out.println("[Discovery] Procurando servidor primário na rede...");
-        return descobrir(PREFIXO_PRIMARIO, ServidorEncontrado.class);
+        return descobrir(PREFIXO_PRIMARIO, ServidorEncontrado.class, false);
     }
 
     /** Procura a réplica na rede via broadcast. */
     public static ReplicaEncontrada descobrirReplica() {
         System.out.println("[Discovery] Procurando réplica na rede...");
-        return descobrir(PREFIXO_REPLICA, ReplicaEncontrada.class);
+        return descobrir(PREFIXO_REPLICA, ReplicaEncontrada.class, true);
     }
 
     @SuppressWarnings("unchecked")
-    private static <T> T descobrir(String prefixoEsperado, Class<T> tipo) {
-        // Escuta na porta de discovery aguardando broadcasts dos outros processos.
-        // SO_REUSEADDR permite que primário e réplica escutem na mesma porta
-        // ao mesmo tempo na mesma máquina (útil para testes locais).
+    private static <T> T descobrir(
+            String prefixoEsperado,
+            Class<T> tipo,
+            boolean ignorarAnunciosDaPropriaMaquina) {
+
+        int portaDiscovery = CONFIGURACAO.obterPortaDiscovery();
+        int timeoutMs = CONFIGURACAO.obterTimeoutDiscoveryMs();
+
         try (DatagramSocket socket = new DatagramSocket(null)) {
             socket.setReuseAddress(true);
             socket.setBroadcast(true);
-            socket.bind(new java.net.InetSocketAddress(PORTA_DISCOVERY));
-            socket.setSoTimeout(TIMEOUT_DESCOBERTA_MS);
+            socket.bind(new java.net.InetSocketAddress(portaDiscovery));
+            socket.setSoTimeout(Math.min(1_000, timeoutMs));
 
             byte[] buffer = new byte[TAMANHO_BUFFER];
             long inicio = System.currentTimeMillis();
 
-            while (System.currentTimeMillis() - inicio < TIMEOUT_DESCOBERTA_MS) {
+            while (System.currentTimeMillis() - inicio < timeoutMs) {
                 DatagramPacket pacote = new DatagramPacket(buffer, buffer.length);
 
                 try {
                     socket.receive(pacote);
                 } catch (SocketTimeoutException timeout) {
-                    break;
+                    continue;
                 }
 
                 String mensagem = new String(
@@ -146,28 +156,13 @@ public class DiscoveryMdns {
                 }
 
                 String ip = pacote.getAddress().getHostAddress();
-
-                // Ignora anúncios da própria máquina para evitar que o
-                // primário descubra a si mesmo como réplica.
-                if (isEnderecoLocal(ip)) {
+                if (ignorarAnunciosDaPropriaMaquina && isEnderecoLocal(ip)) {
                     continue;
                 }
 
-                String[] partes = mensagem.split("\\|");
-
-                if (tipo == ServidorEncontrado.class && partes.length == 3) {
-                    int portaClientes = Integer.parseInt(partes[1]);
-                    int portaHttp     = Integer.parseInt(partes[2]);
-                    System.out.println("[Discovery] Primário encontrado: " + ip
-                            + " clientes=" + portaClientes + " http=" + portaHttp);
-                    return (T) new ServidorEncontrado(ip, portaClientes, portaHttp);
-                }
-
-                if (tipo == ReplicaEncontrada.class && partes.length == 2) {
-                    int portaReplicacao = Integer.parseInt(partes[1]);
-                    System.out.println("[Discovery] Réplica encontrada: " + ip
-                            + " porta=" + portaReplicacao);
-                    return (T) new ReplicaEncontrada(ip, portaReplicacao);
+                T resultado = converterMensagem(tipo, ip, mensagem);
+                if (resultado != null) {
+                    return resultado;
                 }
             }
         } catch (IOException erro) {
@@ -175,18 +170,71 @@ public class DiscoveryMdns {
         }
 
         System.out.println("[Discovery] Nenhum '" + prefixoEsperado + "' encontrado em "
-                + (TIMEOUT_DESCOBERTA_MS / 1000) + "s. Usando config.properties.");
+                + (timeoutMs / 1000) + "s. Usando config.properties.");
         return null;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static <T> T converterMensagem(Class<T> tipo, String ip, String mensagem) {
+        String[] partes = mensagem.split("\\|");
+
+        try {
+            if (tipo == ServidorEncontrado.class && partes.length == 3) {
+                int portaClientes = Integer.parseInt(partes[1]);
+                int portaHttp = Integer.parseInt(partes[2]);
+                System.out.println("[Discovery] Primário encontrado: " + ip
+                        + " clientes=" + portaClientes + " http=" + portaHttp);
+                return (T) new ServidorEncontrado(ip, portaClientes, portaHttp);
+            }
+
+            if (tipo == ReplicaEncontrada.class && partes.length == 2) {
+                int portaReplicacao = Integer.parseInt(partes[1]);
+                System.out.println("[Discovery] Réplica encontrada: " + ip
+                        + " porta=" + portaReplicacao);
+                return (T) new ReplicaEncontrada(ip, portaReplicacao);
+            }
+        } catch (NumberFormatException erro) {
+            System.out.println("[Discovery] Anúncio ignorado por formato inválido: " + mensagem);
+        }
+
+        return null;
+    }
+
+    /**
+     * Retorna 255.255.255.255 e também os broadcasts reais de cada placa,
+     * como 192.168.1.255. Isso aumenta a chance de funcionar em redes Wi-Fi
+     * que não encaminham o broadcast global.
+     */
+    private static Set<InetAddress> listarEnderecosBroadcast() throws IOException {
+        Set<InetAddress> enderecos = new LinkedHashSet<>();
+        enderecos.add(InetAddress.getByName("127.0.0.1"));
+        enderecos.add(InetAddress.getByName("255.255.255.255"));
+
+        Enumeration<NetworkInterface> interfaces = NetworkInterface.getNetworkInterfaces();
+        while (interfaces.hasMoreElements()) {
+            NetworkInterface iface = interfaces.nextElement();
+            if (!iface.isUp() || iface.isLoopback()) {
+                continue;
+            }
+
+            for (InterfaceAddress enderecoInterface : iface.getInterfaceAddresses()) {
+                InetAddress broadcast = enderecoInterface.getBroadcast();
+                if (broadcast instanceof Inet4Address) {
+                    enderecos.add(broadcast);
+                }
+            }
+        }
+
+        return enderecos;
     }
 
     /** Verifica se um IP pertence a esta máquina. */
     private static boolean isEnderecoLocal(String ip) {
         try {
-            java.util.Enumeration<java.net.NetworkInterface> interfaces =
-                    java.net.NetworkInterface.getNetworkInterfaces();
+            Enumeration<NetworkInterface> interfaces = NetworkInterface.getNetworkInterfaces();
             while (interfaces.hasMoreElements()) {
-                java.net.NetworkInterface iface = interfaces.nextElement();
-                java.util.Enumeration<InetAddress> enderecos = iface.getInetAddresses();
+                NetworkInterface iface = interfaces.nextElement();
+                Enumeration<InetAddress> enderecos = iface.getInetAddresses();
                 while (enderecos.hasMoreElements()) {
                     if (enderecos.nextElement().getHostAddress().equals(ip)) {
                         return true;
