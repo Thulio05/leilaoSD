@@ -2,14 +2,6 @@ package leilao.servidor;
 
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
-
-import leilao.config.ConfiguracaoRede;
-import leilao.dominio.GerenciadorLeiloes;
-import leilao.dominio.Lance;
-import leilao.dominio.Leilao;
-import leilao.persistencia.LogDistribuido;
-import leilao.persistencia.RepositorioUsuarios;
-
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
@@ -26,6 +18,12 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.BooleanSupplier;
+import leilao.config.ConfiguracaoRede;
+import leilao.dominio.GerenciadorLeiloes;
+import leilao.dominio.Lance;
+import leilao.dominio.Leilao;
+import leilao.persistencia.LogDistribuido;
+import leilao.persistencia.RepositorioUsuarios;
 
 /**
  * Interface web do sistema de leilão.
@@ -211,7 +209,7 @@ public class PainelMonitoramento {
                     formulario.getOrDefault("valor", "").replace(",", "."));
 
             Leilao.ResultadoLance resultado =
-                    gerenciadorLeiloes.registrarLance(idLeilao, usuario, valor);
+                    gerenciadorLeiloes.registrarLance(idLeilao, usuario, valor, null);
 
             if (!resultado.aceito) {
                 logDistribuido.registrar(gerenciadorLeiloes.obterLamportAtual(),

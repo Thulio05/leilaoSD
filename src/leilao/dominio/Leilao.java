@@ -121,26 +121,43 @@ public class Leilao implements Serializable {
     }
 
     /** Resultado estruturado de uma tentativa de lance. */
-    public static class ResultadoLance {
+    public static class ResultadoLance implements Serializable {
+        private static final long serialVersionUID = 1L;
+
         public final boolean aceito;
         public final String mensagem;
         public final Lance lance;
         public final boolean cronometroEstendido;
+        public final boolean duplicado;
 
         private ResultadoLance(
-                boolean aceito, String mensagem, Lance lance, boolean cronometroEstendido) {
+                boolean aceito,
+                String mensagem,
+                Lance lance,
+                boolean cronometroEstendido,
+                boolean duplicado) {
             this.aceito = aceito;
             this.mensagem = mensagem;
             this.lance = lance;
             this.cronometroEstendido = cronometroEstendido;
+            this.duplicado = duplicado;
         }
 
         public static ResultadoLance aceito(Lance lance, boolean cronometroEstendido) {
-            return new ResultadoLance(true, "Lance aceito!", lance, cronometroEstendido);
+            return new ResultadoLance(true, "Lance aceito!", lance, cronometroEstendido, false);
         }
 
         public static ResultadoLance recusado(String motivo) {
-            return new ResultadoLance(false, motivo, null, false);
+            return new ResultadoLance(false, motivo, null, false, false);
+        }
+
+        public static ResultadoLance duplicado(ResultadoLance original) {
+            return new ResultadoLance(
+                    original.aceito,
+                    original.mensagem,
+                    original.lance,
+                    original.cronometroEstendido,
+                    true);
         }
     }
 }

@@ -1,15 +1,14 @@
 package leilao.servidor;
 
-import leilao.dominio.GerenciadorLeiloes;
-import leilao.dominio.Leilao;
-import leilao.persistencia.LogDistribuido;
-import leilao.persistencia.RepositorioUsuarios;
-
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.net.Socket;
+import leilao.dominio.GerenciadorLeiloes;
+import leilao.dominio.Leilao;
+import leilao.persistencia.LogDistribuido;
+import leilao.persistencia.RepositorioUsuarios;
 
 /** Atende um cliente em uma thread dedicada. */
 public class TratadorCliente implements Runnable {
@@ -209,6 +208,7 @@ public class TratadorCliente implements Runnable {
         try {
             int idLeilao = Integer.parseInt(partes[1]);
             double valor = Double.parseDouble(partes[2].replace(",", "."));
+            String bidId = partes.length >= 4 ? partes[3] : null;
 
             if (valor <= 0) {
                 enviarMensagem("O valor do lance deve ser positivo.");
@@ -216,13 +216,24 @@ public class TratadorCliente implements Runnable {
             }
 
             Leilao.ResultadoLance resultado =
-                    gerenciadorLeiloes.registrarLance(idLeilao, nomeCliente, valor);
+                    gerenciadorLeiloes.registrarLance(idLeilao, nomeCliente, valor, bidId);
 
             if (!resultado.aceito) {
                 logDistribuido.registrar(gerenciadorLeiloes.obterLamportAtual(),
                         "LANCE_RECUSADO leilao=" + idLeilao + " usuario=" + nomeCliente
                                 + " valor=" + valor + " motivo=\"" + resultado.mensagem + "\"");
                 enviarMensagem("✗ Lance recusado: " + resultado.mensagem);
+                return;
+            }
+
+            if (resultado.duplicado) {
+                logDistribuido.registrar(gerenciadorLeiloes.obterLamportAtual(),
+                        "LANCE_DUPLICADO_IGNORADO leilao=" + idLeilao
+                                + " usuario=" + nomeCliente
+                                + " bidId=" + bidId);
+                enviarMensagem("✓ Lance já havia sido registrado anteriormente "
+                        + "(reenvio detectado, nada foi duplicado).");
+                enviarMensagem(gerenciadorLeiloes.obterStatusLeilao(idLeilao));
                 return;
             }
 
