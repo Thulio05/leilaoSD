@@ -1,0 +1,9 @@
+[Lamport=0     | 22:48:58] SERVIDOR_INICIADO papel=PRIMARIO
+[Lamport=0     | 22:49:49] USUARIO_CADASTRADO_WEB usuario=gui
+[Lamport=1     | 22:49:57] REPLICACAO_ESTADO leilao=4 tipo=criacao sucesso=true
+[Lamport=1     | 22:49:57] LEILAO_CRIADO_WEB leilao=4 usuario=gui precoInicial=123.0 item="haha"
+[Lamport=1     | 22:50:25] USUARIO_CADASTRADO usuario=haha
+[Lamport=1     | 22:51:17] USUARIO_LOGIN_WEB usuario=gui
+[Lamport=2     | 22:51:37] REPLICACAO_ESTADO leilao=4 sucesso=true
+[Lamport=2     | 22:51:37] LANCE_ACEITO leilao=4 usuario=haha valor=200.0
+[Lamport=3     | 22:51:37] LANCE_RECUSADO_WEB leilao=4 usuario=gui valor=200.0 motivo="Lance muito baixo. O lance atual é R$ 200,00."
