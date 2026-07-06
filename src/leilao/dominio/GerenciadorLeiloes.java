@@ -12,6 +12,8 @@ import java.util.concurrent.ConcurrentHashMap;
 public class GerenciadorLeiloes {
 
     private final ConcurrentHashMap<Integer, Leilao> leiloes = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, Leilao.ResultadoLance> lancesPorBidId =
+            new ConcurrentHashMap<>();
     private final RelogioLamport relogioLamport = new RelogioLamport();
     private int proximoId = 1;
 
@@ -47,7 +49,17 @@ public class GerenciadorLeiloes {
      * dos timestamps de Lamport, facilitando a explicação do MVP.
      */
     public synchronized Leilao.ResultadoLance registrarLance(
-            int idLeilao, String nomeLicitante, double valor) {
+            int idLeilao, String nomeLicitante, double valor, String bidId) {
+
+        if (bidId != null) {
+            Leilao.ResultadoLance resultadoAnterior = lancesPorBidId.get(bidId);
+            if (resultadoAnterior != null) {
+                System.out.println("[IDEMPOTÊNCIA] bidId=" + bidId
+                        + " já processado. Reenvio detectado para o leilão #"
+                        + idLeilao + ".");
+                return Leilao.ResultadoLance.duplicado(resultadoAnterior);
+            }
+        }
 
         Leilao leilao = leiloes.get(idLeilao);
         if (leilao == null) {
@@ -58,7 +70,13 @@ public class GerenciadorLeiloes {
         System.out.println("[LAMPORT] Lance de '" + nomeLicitante
                 + "' recebeu timestamp lógico " + timestamp + ".");
 
-        return leilao.adicionarLance(nomeLicitante, valor, timestamp);
+        Leilao.ResultadoLance resultado = leilao.adicionarLance(nomeLicitante, valor, timestamp);
+
+        if (bidId != null && resultado.aceito) {
+            lancesPorBidId.put(bidId, resultado);
+        }
+
+        return resultado;
     }
 
     public String obterStatusLeilao(int idLeilao) {
@@ -149,12 +167,19 @@ public class GerenciadorLeiloes {
 
     public synchronized EstadoReplicado criarEstadoReplicado() {
         return new EstadoReplicado(
-                new HashMap<>(leiloes), proximoId, relogioLamport.obterValorAtual());
+                new HashMap<>(leiloes),
+                new HashMap<>(lancesPorBidId),
+                proximoId,
+                relogioLamport.obterValorAtual());
     }
 
     public synchronized void restaurarEstadoReplicado(EstadoReplicado estado) {
         leiloes.clear();
         leiloes.putAll(estado.obterLeiloes());
+        lancesPorBidId.clear();
+        if (estado.obterLancesPorBidId() != null) {
+            lancesPorBidId.putAll(estado.obterLancesPorBidId());
+        }
         proximoId = estado.obterProximoId();
         relogioLamport.sincronizarRecebimento(estado.obterTimestampLamport());
     }
@@ -164,18 +189,27 @@ public class GerenciadorLeiloes {
         private static final long serialVersionUID = 1L;
 
         private final Map<Integer, Leilao> leiloes;
+        private final Map<String, Leilao.ResultadoLance> lancesPorBidId;
         private final int proximoId;
         private final long timestampLamport;
 
         public EstadoReplicado(
-                Map<Integer, Leilao> leiloes, int proximoId, long timestampLamport) {
+                Map<Integer, Leilao> leiloes,
+                Map<String, Leilao.ResultadoLance> lancesPorBidId,
+                int proximoId,
+                long timestampLamport) {
             this.leiloes = leiloes;
+            this.lancesPorBidId = lancesPorBidId;
             this.proximoId = proximoId;
             this.timestampLamport = timestampLamport;
         }
 
         public Map<Integer, Leilao> obterLeiloes() {
             return leiloes;
+        }
+
+        public Map<String, Leilao.ResultadoLance> obterLancesPorBidId() {
+            return lancesPorBidId;
         }
 
         public int obterProximoId() {

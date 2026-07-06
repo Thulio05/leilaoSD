@@ -1,7 +1,5 @@
 package leilao.cliente;
 
-import leilao.config.ConfiguracaoRede;
-
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -9,6 +7,8 @@ import java.io.PrintWriter;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.util.Scanner;
+import java.util.UUID;
+import leilao.config.ConfiguracaoRede;
 
 /** Cliente de terminal com leitura assíncrona e reconexão automática. */
 public class ClienteLeilao {
@@ -24,6 +24,7 @@ public class ClienteLeilao {
     private volatile boolean conectado;
     private volatile boolean reconectando;
     private volatile boolean encerrando;
+    private volatile String comandoLancePendente;
     private String nomeUsuario;
     private String senhaUsuario;
 
@@ -62,6 +63,11 @@ public class ClienteLeilao {
                 if (reenviarNome && nomeUsuario != null && senhaUsuario != null) {
                     saida.println(nomeUsuario);
                     saida.println(senhaUsuario);
+
+                    if (comandoLancePendente != null) {
+                        System.out.println("[IDEMPOTÊNCIA] Reenviando lance pendente após reconexão.");
+                        saida.println(comandoLancePendente);
+                    }
                 }
 
                 System.out.println("[INFO] Conectado ao servidor " + papel + ".");
@@ -110,7 +116,8 @@ public class ClienteLeilao {
                     break;
                 }
 
-                if (!enviarTexto(textoDigitado)) {
+                String textoParaEnviar = prepararComandoDeLanceSeNecessario(textoDigitado);
+                if (!enviarTexto(textoParaEnviar)) {
                     tratarQuedaDeConexao();
                 }
             }
@@ -135,6 +142,10 @@ public class ClienteLeilao {
             String linha;
             while ((linha = entradaDestaConexao.readLine()) != null) {
                 System.out.println(linha);
+
+                if (comandoLancePendente != null && linha.contains("Lance")) {
+                    comandoLancePendente = null;
+                }
             }
 
             if (!encerrando) {
@@ -184,6 +195,21 @@ public class ClienteLeilao {
         }
 
         reconectando = false;
+    }
+
+    private String prepararComandoDeLanceSeNecessario(String textoDigitado) {
+        String[] partes = textoDigitado.trim().split("\\s+");
+
+        if (partes.length == 3
+                && ("lance".equalsIgnoreCase(partes[0])
+                || "lancar".equalsIgnoreCase(partes[0]))) {
+            String bidId = UUID.randomUUID().toString();
+            String comandoComBidId = textoDigitado.trim() + " " + bidId;
+            comandoLancePendente = comandoComBidId;
+            return comandoComBidId;
+        }
+
+        return textoDigitado;
     }
 
     private void fecharConexaoAtual() {
